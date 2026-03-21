@@ -1,2 +1,3 @@
 mod cards;
-mod simulation;
+mod game;
+mod sim;

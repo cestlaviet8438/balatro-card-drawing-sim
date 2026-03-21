@@ -8,8 +8,19 @@ use std::{
 	str::FromStr,
 };
 
+use enum_iterator::{
+	Sequence,
+	all,
+};
+use rand::{
+	rngs::ThreadRng,
+	seq::SliceRandom,
+};
+
 /// The rank of a playing card.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Sequence,
+)]
 pub enum Rank {
 	Two = 2,
 	Three = 3,
@@ -64,7 +75,9 @@ impl FromStr for Rank {
 /// The suit of a playing card.
 /// Though ordering is implemented/derived, it is not significant in the game
 /// itself.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Sequence,
+)]
 pub enum Suit {
 	Diamond,
 	Club,
@@ -112,7 +125,9 @@ impl FromStr for Card {
 /// a Kind and such.
 ///
 /// Note that Royal Flushes are not distinguished from a Straight Flush.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Sequence,
+)]
 pub enum PokerHand {
 	HighCard,
 	Pair,
@@ -292,6 +307,32 @@ impl Hand {
 		self.contains_straight() && self.contains_flush()
 	}
 
+	/// Returns whether the hand *contains* a certain poker hand, that is
+	/// if the hand satisfies or *exceeds* a certain requirement for the
+	/// poker hand. For example, a [`PokerHand::StraightFlush`] contains
+	/// both a straight and a flush; a [`PokerHand::FourOfAKind`] contains a
+	/// pair and a three of a kind as well.
+	///
+	/// The poker hand checking implmeneted in this struct assumes that the
+	/// hand was acquired from an unmodified, standard deck of 52 playing poker
+	/// cards. For this reason, this function will behave exactly like
+	/// [[`Self::is_poker_hand`]] for some *rarer, more restrictive* hand
+	/// types: [`PokerHand::FullHouse`], [`PokerHand::FourOfAKind`], and
+	/// [`PokerHand::StraightFlush`].
+	pub fn contains_poker_hand(&self, poker_hand: PokerHand) -> bool {
+		match poker_hand {
+			PokerHand::HighCard => true,
+			PokerHand::Pair => self.contains_pair(),
+			PokerHand::TwoPair => self.contains_two_pair(),
+			PokerHand::ThreeOfAKind => self.contains_three_of_a_kind(),
+			PokerHand::Straight => self.contains_straight(),
+			PokerHand::Flush => self.contains_flush(),
+			PokerHand::FullHouse => self.is_full_house(),
+			PokerHand::FourOfAKind => self.is_four_of_a_kind(),
+			PokerHand::StraightFlush => self.is_straight_flush(),
+		}
+	}
+
 	/// Returns whether the hand is a certain poker hand.
 	///
 	/// The poker hand checking implemeneted in this struct assumes that the
@@ -306,6 +347,7 @@ impl Hand {
 			},
 			PokerHand::Pair => {
 				self.contains_pair()
+					&& !self.contains_two_pair()
 					&& !self.contains_three_of_a_kind()
 					&& !self.is_four_of_a_kind()
 			},
@@ -325,6 +367,72 @@ impl Hand {
 			PokerHand::FourOfAKind => self.is_four_of_a_kind(),
 			PokerHand::StraightFlush => self.is_straight_flush(),
 		}
+	}
+
+	/// Returns the best (highest-value type) that this hand qualifies as.
+	/// For example, though a [`PokerHand::FourOfAKind`] contains a
+	/// [`PokerHand::ThreeOfAKind`] as well, it would officially be considered
+	/// a [`PokerHand::FourOfAKind`].
+	pub fn get_poker_hand_type(&self) -> PokerHand {
+		let result = all::<PokerHand>()
+			.map(|poker_hand| {
+				(poker_hand, Self::is_poker_hand(self, poker_hand))
+			})
+			.filter(|(_, is_poker_hand)| *is_poker_hand)
+			.collect::<Vec<_>>();
+		if result.len() != 1 {
+			dbg!(result);
+			panic!("only one hand should return true");
+		}
+		result[0].0
+	}
+}
+
+/// A standard pack of 52 playing [`Card`]`s`.
+pub struct Pack {
+	cards: Vec<Card>,
+	rng: ThreadRng,
+}
+
+impl Default for Pack {
+	fn default() -> Self {
+		let mut cards = vec![];
+		for rank in all::<Rank>() {
+			for suit in all::<Suit>() {
+				cards.push(Card(rank, suit));
+			}
+		}
+		Self::new(cards, true)
+	}
+}
+
+impl Deref for Pack {
+	type Target = Vec<Card>;
+
+	fn deref(&self) -> &Self::Target {
+		&self.cards
+	}
+}
+
+impl Pack {
+	/// Creates a new pack of cards with the given cards, and the option to
+	/// shuffle.
+	pub fn new(mut cards: Vec<Card>, shuffle: bool) -> Self {
+		let mut rng = rand::rng();
+		if shuffle {
+			cards.shuffle(&mut rng);
+		}
+		Self { cards, rng }
+	}
+
+	pub fn draw_top_random(&mut self, n: usize) -> Vec<Card> {
+		assert!(
+			n <= self.cards.len(),
+			"cannot draw more cards than are available"
+		);
+		assert!(n > 0, "why are you drawing 0 cards");
+		let remove_slice_from = self.cards.len() - n;
+		self.cards.drain(remove_slice_from..).collect()
 	}
 }
 
@@ -417,6 +525,10 @@ mod test {
 		assert!(
 			!high_6_test_hand().is_poker_hand(PokerHand::Pair),
 			"high card is not a pair"
+		);
+		assert!(
+			!ace_three_two_pair_test_hand().is_poker_hand(PokerHand::Pair),
+			"two pair is not a pair"
 		);
 		assert!(
 			!three_aces_test_hand().is_poker_hand(PokerHand::Pair),
@@ -583,5 +695,74 @@ mod test {
 			!heart_flush_test_hand().is_poker_hand(PokerHand::StraightFlush),
 			"flush is not a straight flush"
 		)
+	}
+
+	#[test]
+	pub fn get_poker_hand_type_test() {
+		assert_eq!(
+			high_6_test_hand().get_poker_hand_type(),
+			PokerHand::HighCard,
+			"high 6 is a high card"
+		);
+		assert_eq!(
+			weird_straight_high_ace_test_hand().get_poker_hand_type(),
+			PokerHand::HighCard,
+			"weird straight is a high card"
+		);
+		assert_eq!(
+			ace_pair_test_hand().get_poker_hand_type(),
+			PokerHand::Pair,
+			"ace pair is a pair"
+		);
+		assert_eq!(
+			ace_three_two_pair_test_hand().get_poker_hand_type(),
+			PokerHand::TwoPair,
+			"ace & three two pair is a two pair"
+		);
+		assert_eq!(
+			three_aces_test_hand().get_poker_hand_type(),
+			PokerHand::ThreeOfAKind,
+			"three aces is a three of a kind"
+		);
+		assert_eq!(
+			ten_to_ace_straight_test_hand().get_poker_hand_type(),
+			PokerHand::Straight,
+			"ten to ace straight is a straight"
+		);
+		assert_eq!(
+			ace_to_five_straight_test_hand().get_poker_hand_type(),
+			PokerHand::Straight,
+			"ace to five straight is a straight"
+		);
+		assert_eq!(
+			heart_flush_test_hand().get_poker_hand_type(),
+			PokerHand::Flush,
+			"heart flush is a flush"
+		);
+		assert_eq!(
+			spade_flush_test_hand().get_poker_hand_type(),
+			PokerHand::Flush,
+			"spade flush is a flush"
+		);
+		assert_eq!(
+			ace_four_full_house_test_hand().get_poker_hand_type(),
+			PokerHand::FullHouse,
+			"ace & four full house is a full house"
+		);
+		assert_eq!(
+			four_aces_test_hand().get_poker_hand_type(),
+			PokerHand::FourOfAKind,
+			"four aces are a four of a kind"
+		);
+		assert_eq!(
+			ten_to_ace_heart_straight_flush_test_hand().get_poker_hand_type(),
+			PokerHand::StraightFlush,
+			"ten to ace heart flush is a straight flush"
+		);
+		assert_eq!(
+			ace_to_five_heart_straight_flush_test_hand().get_poker_hand_type(),
+			PokerHand::StraightFlush,
+			"ace to five heart flush is a straight flush"
+		);
 	}
 }
