@@ -197,14 +197,32 @@ impl FromStr for Card {
 	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Sequence,
 )]
 pub enum PokerHand {
+	/// A hand that satisfies the requirement for none of the other poker hands.
 	HighCard,
+
+	/// Two cards that share the same rank.
 	Pair,
+
+	/// A set of two distinct ranks.
 	TwoPair,
+
+	/// Three cards that share the same rank.
 	ThreeOfAKind,
+
+	/// A set of 5 cards that can be arranged into a strictly
+	/// increasing/decreasing sequence adjacent to each other.
 	Straight,
+
+	/// A set of 5 cards sharing the same rank.
 	Flush,
+
+	/// A pair and a three of a kind.
 	FullHouse,
+
+	/// Four cards that share the same rank.
 	FourOfAKind,
+
+	/// A straight that also qualifies as a flush.
 	StraightFlush,
 }
 
@@ -586,8 +604,20 @@ mod test {
 		Hand::from_iter(["th", "jh", "qh", "kh", "ah"])
 	}
 
-	fn card_set_with_ten_to_ace_straight() -> CardSet {
+	fn card_set_with_ten_to_ace_straight_flush() -> CardSet {
 		CardSet::from_iter(["th", "jh", "qh", "kh", "ah", "2h", "3h", "4h"])
+	}
+
+	fn card_set_with_broken_straight() -> CardSet {
+		CardSet::from_iter(["jh", "qh", "kh", "ah", "2h", "3h", "4h", "6h"])
+	}
+
+	fn card_set_with_almost_straight() -> CardSet {
+		CardSet::from_iter(["ah", "2h", "3h", "4h", "3h", "2h", "ah", "6h"])
+	}
+
+	fn card_set_with_almost_flush() -> CardSet {
+		CardSet::from_iter(["ah", "2h", "3h", "4h", "3s", "2s", "as", "6s"])
 	}
 
 	#[should_panic(expected = "a hand must be between 1 or 5 cards")]
@@ -732,6 +762,18 @@ mod test {
 			!ace_pair_hand().is_poker_hand(PokerHand::ThreeOfAKind),
 			"pair is not a straight"
 		);
+		assert!(
+			card_set_with_ten_to_ace_straight_flush().contains_straight(),
+			"card set contains ten to ace straight (flush)"
+		);
+		assert!(
+			!card_set_with_broken_straight().contains_straight(),
+			"broken ace does not make a straight in card set"
+		);
+		assert!(
+			!card_set_with_almost_straight().contains_straight(),
+			"card set has no straight though all are adjacent to next card"
+		);
 	}
 
 	#[test]
@@ -757,6 +799,15 @@ mod test {
 			!ace_pair_hand().is_poker_hand(PokerHand::Flush),
 			"pair is not a straight"
 		);
+		assert!(
+			card_set_with_ten_to_ace_straight_flush().contains_flush(),
+			"card set contains ten to ace (straight) flush"
+		);
+		assert!(
+			!card_set_with_almost_flush().contains_flush(),
+			"card set does not contain a flush since it only has 4 of each \
+			 suit"
+		)
 	}
 
 	#[test]
