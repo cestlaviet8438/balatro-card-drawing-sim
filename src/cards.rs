@@ -265,8 +265,8 @@ impl<'a> FromIterator<&'a str> for CardSet {
 impl CardSet {
 	/// Checks if this card set contains a [`PokerHand::Straight`], i.e. at
 	/// least 5 of the cards' ranks can be arranged in strictly increasing
-	/// order by steps of
-	/// 1. In a [`Hand`] of 5 cards, all of the cards, can be arranged this way.
+	/// order by steps of 1.
+	/// In a [`Hand`] of 5 cards, all of the cards can be arranged this way.
 	pub fn contains_straight(&self) -> bool {
 		let mut ranks = self.rank_set().into_iter().collect::<Vec<_>>();
 		ranks.sort();
@@ -295,7 +295,7 @@ impl CardSet {
 
 	/// Checks if this card set contains a [`PokerHand::Flush`], i.e. at least 5
 	/// of the cards' suits are the same. In a [`Hand`] of 5 cards, all of the
-	/// cards' suits are the same. If a
+	/// cards' suits are the same.
 	pub fn contains_flush(&self) -> bool {
 		self.suit_counts().iter().any(|(_, count)| *count >= 5)
 	}
@@ -361,26 +361,26 @@ impl Hand {
 			.count() >= 2
 	}
 
-	/// Checks if hand contains a three of a kind, i.e. at least
+	/// Checks if this hand contains a three of a kind, i.e. at least
 	/// three cards share the same rank.
 	pub fn contains_three_of_a_kind(&self) -> bool {
 		self.rank_counts().values().any(|count| *count >= 3)
 	}
 
-	/// Checks if the provided hand is a full house, i.e. there is a
+	/// Checks if this hand is a full house, i.e. there is a
 	/// three of a kind and pair, distinct in rank.
 	pub fn is_full_house(&self) -> bool {
 		let counts = self.rank_counts().values().copied().collect::<Vec<_>>();
 		counts.contains(&2) && counts.contains(&3)
 	}
 
-	/// Checks if the provided hand is a four of a kind, i.e. all four
+	/// Checks if this hand is a four of a kind, i.e. all four
 	/// suits of the same rank are present in the hand.
 	pub fn is_four_of_a_kind(&self) -> bool {
 		*self.rank_counts().values().max().unwrap() == 4
 	}
 
-	/// Checks if the provided hand is a straight flush, i.e. there is
+	/// Checks if this hand is a straight flush, i.e. there is
 	/// both a straight and a flush in the hand.
 	pub fn is_straight_flush(&self) -> bool {
 		self.contains_straight() && self.contains_flush()
