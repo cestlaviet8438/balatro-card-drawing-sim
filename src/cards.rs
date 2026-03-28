@@ -54,7 +54,11 @@ impl FromStr for Rank {
 	type Err = Box<dyn Error>;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		assert_eq!(s.len(), 1, "rank string has to be one character");
+		assert_eq!(
+			s.len(),
+			1,
+			"rank string has to be one character. received {s}"
+		);
 		Ok(match s.chars().next().unwrap() {
 			'2' => Rank::Two,
 			'3' => Rank::Three,
@@ -91,7 +95,11 @@ impl FromStr for Suit {
 	type Err = Box<dyn Error>;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		assert_eq!(s.len(), 1, "suit string has to be one character");
+		assert_eq!(
+			s.len(),
+			1,
+			"suit string has to be one character. received {s}"
+		);
 		Ok(match s.chars().next().unwrap() {
 			'd' | 'D' | '♦' | '♢' => Suit::Diamond,
 			'c' | 'C' | '♣' | '♧' => Suit::Club,
@@ -166,7 +174,11 @@ impl FromStr for Card {
 	type Err = Box<dyn Error>;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		assert_eq!(s.len(), 2, "card string has to be exactly two characters");
+		assert_eq!(
+			s.len(),
+			2,
+			"card string has to be exactly two characters. received {s}"
+		);
 		let mut s_chars = s.chars();
 		let (rank, suit) = (
 			Rank::from_str(&String::from(s_chars.next().unwrap()))?,
@@ -216,20 +228,19 @@ impl CardCollection for CardSet {
 	}
 }
 
-impl From<Vec<&str>> for CardSet {
-	fn from(cards: Vec<&str>) -> Self {
-		Self::from(
-			cards
-				.into_iter()
-				.map(|s| Card::from_str(s).unwrap())
-				.collect::<Vec<_>>(),
-		)
+impl<C: Into<Card>> FromIterator<C> for CardSet {
+	fn from_iter<T: IntoIterator<Item = C>>(iter: T) -> Self {
+		Self(iter.into_iter().map(|c| c.into()).collect())
 	}
 }
 
-impl From<Vec<Card>> for CardSet {
-	fn from(cards: Vec<Card>) -> Self {
-		Self(cards.into_iter().collect())
+impl<'a> FromIterator<&'a str> for CardSet {
+	fn from_iter<T: IntoIterator<Item = &'a str>>(iter: T) -> Self {
+		Self(
+			iter.into_iter()
+				.map(|c| Card::from_str(c).unwrap())
+				.collect(),
+		)
 	}
 }
 
@@ -295,25 +306,26 @@ impl CardCollection for Hand {
 	}
 }
 
-impl<const N: usize> From<[&str; N]> for Hand {
-	fn from(cards: [&str; N]) -> Self {
-		Hand::new(
-			cards
-				.into_iter()
-				.map(|c| Card::from_str(c).unwrap())
-				.collect(),
-		)
+impl<C: Into<Card>> FromIterator<C> for Hand {
+	fn from_iter<T: IntoIterator<Item = C>>(iter: T) -> Self {
+		Self::new(CardSet::from_iter(iter.into_iter().map(|c| c.into())))
+	}
+}
+
+impl<'a> FromIterator<&'a str> for Hand {
+	fn from_iter<T: IntoIterator<Item = &'a str>>(iter: T) -> Self {
+		Self::new(CardSet::from_iter(iter))
 	}
 }
 
 impl Hand {
 	/// Constructs a new hand.
-	pub fn new(cards: Vec<Card>) -> Self {
+	pub fn new(cards: CardSet) -> Self {
 		assert!(
 			!cards.is_empty() && cards.len() <= 5,
-			"a hand must be between 1 or 5 cards",
+			"a hand must be between 1 or 5 cards. received: {cards:?}",
 		);
-		Hand(CardSet(cards))
+		Hand(cards)
 	}
 
 	/// Checks if this hand contains a pair, i.e. at least two cards
@@ -341,7 +353,7 @@ impl Hand {
 	/// three of a kind and pair, distinct in rank.
 	pub fn is_full_house(&self) -> bool {
 		let counts = self.rank_counts().values().copied().collect::<Vec<_>>();
-		counts.contains((&2)) && counts.contains((&3))
+		counts.contains(&2) && counts.contains(&3)
 	}
 
 	/// Checks if the provided hand is a four of a kind, i.e. all four
@@ -481,10 +493,12 @@ impl Deck {
 		Self { cards, rng }
 	}
 
+	/// Draw `n` cards from the top of the deck.
 	pub fn draw(&mut self, n: usize) -> Vec<Card> {
 		assert!(
 			n <= self.cards.len(),
-			"cannot draw more cards than are available"
+			"tried to draw {n} cards when there are {} left",
+			self.len()
 		);
 		assert!(n > 0, "why are you drawing 0 cards");
 		let remove_slice_from = self.cards.len() - n;
@@ -495,92 +509,97 @@ impl Deck {
 #[cfg(test)]
 mod test {
 	use crate::cards::{
+		CardSet,
 		Hand,
 		PokerHand,
 	};
 
 	fn lone_ace_of_hearts() -> Hand {
-		Hand::from(["ah"])
+		Hand::from_iter(["ah"])
 	}
 
 	fn high_6_hand() -> Hand {
-		Hand::from(["ah", "2h", "3h", "4h", "6s"])
+		Hand::from_iter(["ah", "2h", "3h", "4h", "6s"])
 	}
 
 	fn weird_straight_high_ace_hand() -> Hand {
-		Hand::from(["jh", "qh", "kh", "ah", "2s"])
+		Hand::from_iter(["jh", "qh", "kh", "ah", "2s"])
 	}
 
 	fn lone_ace_pair() -> Hand {
-		Hand::from(["ah", "as"])
+		Hand::from_iter(["ah", "as"])
 	}
 
 	fn ace_pair_hand() -> Hand {
-		Hand::from(["ah", "as", "3h", "4h", "6s"])
+		Hand::from_iter(["ah", "as", "3h", "4h", "6s"])
 	}
 
 	fn ace_three_two_pair_hand() -> Hand {
-		Hand::from(["ah", "as", "3h", "3s", "6s"])
+		Hand::from_iter(["ah", "as", "3h", "3s", "6s"])
 	}
 
 	fn lone_ace_three_two_pair() -> Hand {
-		Hand::from(["ah", "as", "3h", "3s"])
+		Hand::from_iter(["ah", "as", "3h", "3s"])
 	}
 
 	fn three_aces_hand() -> Hand {
-		Hand::from(["ah", "as", "ac", "4h", "5h"])
+		Hand::from_iter(["ah", "as", "ac", "4h", "5h"])
 	}
 
 	fn lone_three_aces() -> Hand {
-		Hand::from(["ah", "as", "ac"])
+		Hand::from_iter(["ah", "as", "ac"])
 	}
 
 	fn ace_to_five_straight_test_hand() -> Hand {
-		Hand::from(["as", "2h", "3h", "4h", "5h"])
+		Hand::from_iter(["as", "2h", "3h", "4h", "5h"])
 	}
 
 	fn ten_to_ace_straight_test_hand() -> Hand {
-		Hand::from(["ts", "jh", "qh", "kh", "ah"])
+		Hand::from_iter(["ts", "jh", "qh", "kh", "ah"])
 	}
 
 	fn heart_flush_test_hand() -> Hand {
-		Hand::from(["ah", "2h", "3h", "4h", "6h"])
+		Hand::from_iter(["ah", "2h", "3h", "4h", "6h"])
 	}
 
 	fn spade_flush_test_hand() -> Hand {
-		Hand::from(["as", "3s", "5s", "7s", "9s"])
+		Hand::from_iter(["as", "3s", "5s", "7s", "9s"])
 	}
 
 	fn ace_four_full_house_test_hand() -> Hand {
-		Hand::from(["ah", "as", "ac", "4h", "4s"])
+		Hand::from_iter(["ah", "as", "ac", "4h", "4s"])
 	}
 
 	fn four_aces_test_hand() -> Hand {
-		Hand::from(["ah", "as", "ac", "ad", "6h"])
+		Hand::from_iter(["ah", "as", "ac", "ad", "6h"])
 	}
 
 	fn lone_four_aces() -> Hand {
-		Hand::from(["ah", "as", "ac", "ad"])
+		Hand::from_iter(["ah", "as", "ac", "ad"])
 	}
 
 	fn ace_to_five_heart_straight_flush_test_hand() -> Hand {
-		Hand::from(["ah", "2h", "3h", "4h", "5h"])
+		Hand::from_iter(["ah", "2h", "3h", "4h", "5h"])
 	}
 
 	fn ten_to_ace_heart_straight_flush_test_hand() -> Hand {
-		Hand::from(["th", "jh", "qh", "kh", "ah"])
+		Hand::from_iter(["th", "jh", "qh", "kh", "ah"])
+	}
+
+	fn card_set_with_ten_to_ace_straight() -> CardSet {
+		CardSet::from_iter(["th", "jh", "qh", "kh", "ah", "2h", "3h", "4h"])
 	}
 
 	#[should_panic(expected = "a hand must be between 1 or 5 cards")]
 	#[test]
 	fn cannot_make_an_empty_hand() {
-		let _ = Hand::from([]);
+		let _ = Hand::from_iter::<[&str; 0]>([]);
 	}
 
 	#[should_panic(expected = "a hand must be between 1 or 5 cards")]
 	#[test]
 	fn cannot_make_a_hand_with_6_cards() {
-		let _ = Hand::from(["ah", "ah", "ah", "ah", "ah", "ah"]);
+		let _ = Hand::from_iter(["ah", "ah", "ah", "ah", "ah", "ah"]);
 	}
 
 	#[test]

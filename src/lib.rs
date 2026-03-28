@@ -1,3 +1,5 @@
+#![expect(unused)]
+
 mod cards;
 mod game;
 mod sim;

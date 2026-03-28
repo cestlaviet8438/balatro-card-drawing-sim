@@ -54,19 +54,17 @@ impl FinishFlushes {
 	///   For example, holding 4 hearts and 4 diamonds in hand, if there are 9
 	///   hearts left in deck but 8 or less diamonds, hearts is chosen as the
 	///   target suit.
-	/// - If there are multiple eligible suits, one is chosen at random.
+	/// - If there are multiple eligible suits, "the first one" is chosen
+	///   effectively at random. For the purposes of this simulation, suit
+	///   orders do not matter; in this scenario, however, whichever suit
+	///   happened to come first when looking through the hand/deck will be
+	///   returned.
 	///
-	/// If there already is a Flush in hand, return that [`Suit`] immediately.
-	/// For this to be valid, this function depends on the assertion that there
-	/// can only ever be 8 cards in hand at once (the Balatro default).
-	///  
 	/// This algorithm does neglect certain edge cases like having 3 hearts, 3
 	/// spades, 3 clubs having 5 diamonds still in deck, where discarding any 5
 	/// cards on hand ensures that a diamond is created.
 	fn get_target_suit(game: &Game) -> Suit {
 		let hand_suit_counts = &game.held.suit_counts();
-		game.held.contains_flush();
-
 		// look for most suits in hand.
 		let (best_held_suits, _count_in_hand) =
 			Self::get_max_entries(hand_suit_counts);
@@ -95,5 +93,14 @@ impl FinishFlushes {
 impl Strategy for FinishFlushes {
 	fn get_cards_to_discard(&self, _game: &Game) -> Vec<Card> {
 		todo!()
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use crate::cards::Deck;
+
+	fn standard_deck() -> Deck {
+		Deck::default()
 	}
 }

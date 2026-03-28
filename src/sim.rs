@@ -1,6 +1,5 @@
 //! What this project is setting out to do.
 
-
 use crate::{
 	cards::PokerHand,
 	game::Game,
