@@ -1,3 +1,5 @@
+//! Mechanisms dealing with poker cards and hands.
+
 use std::{
 	collections::{
 		HashMap,
@@ -100,11 +102,65 @@ impl FromStr for Suit {
 	}
 }
 
+/// A collection of cards.
+pub trait CardCollection {
+	/// Returns a view into the cards this collection contains.
+	fn get_cards(&self) -> &[Card];
+
+	/// Returns the set of ranks this collection contains.
+	fn rank_set(&self) -> HashSet<Rank> {
+		self.get_cards().iter().map(|card| card.0).collect()
+	}
+
+	/// Returns a [`HashMap`] of ranks this collection contains, mapping each
+	/// rank in the hand to how many cards shared that rank.
+	fn rank_counts(&self) -> HashMap<Rank, usize> {
+		let mut counts = HashMap::new();
+		for card in self.get_cards() {
+			counts
+				.entry(card.0)
+				.and_modify(|count| *count += 1)
+				.or_insert(1);
+		}
+		counts
+	}
+
+	/// Returns the set of suits this collection contains.
+	fn suit_set(&self) -> HashSet<Suit> {
+		self.get_cards().iter().map(|card| card.1).collect()
+	}
+
+	/// Returns a [`HashMap`] of suits this collection contains, mapping each
+	/// suit in the hand to how many cards shared that rank.
+	fn suit_counts(&self) -> HashMap<Suit, usize> {
+		let mut counts = HashMap::new();
+		for card in self.get_cards() {
+			counts
+				.entry(card.1)
+				.and_modify(|count| *count += 1)
+				.or_insert(1);
+		}
+		counts
+	}
+}
+
+impl CardCollection for Vec<Card> {
+	fn get_cards(&self) -> &[Card] {
+		self
+	}
+}
+
+impl CardCollection for &[Card] {
+	fn get_cards(&self) -> &[Card] {
+		self
+	}
+}
+
 /// A playing card in Balatro/Poker, in general.
 ///
 /// For this simulation, enhancements and editions are not included.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Card(Rank, Suit);
+pub struct Card(pub Rank, pub Suit);
 
 impl FromStr for Card {
 	type Err = Box<dyn Error>;
@@ -140,32 +196,27 @@ pub enum PokerHand {
 	StraightFlush,
 }
 
-pub type FiveCards = [Card; 5];
+/// A set of cards in Poker, considered as a group. It is not a [`Hand`] - the
+/// set can have as many cards as desired. For a played hand in Balatro, see
+/// [`Hand`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CardSet(pub Vec<Card>);
 
-/// A hand of cards in Poker.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Hand(FiveCards);
+impl Deref for CardSet {
+	type Target = Vec<Card>;
 
-impl Deref for Hand {
-	type Target = FiveCards;
-
-	fn deref(&self) -> &FiveCards {
+	fn deref(&self) -> &Self::Target {
 		&self.0
 	}
 }
 
-impl From<[&str; 5]> for Hand {
-	fn from(cards: [&str; 5]) -> Self {
-		Self::from(
-			cards
-				.into_iter()
-				.map(|s| Card::from_str(s).unwrap())
-				.collect::<Vec<_>>(),
-		)
+impl CardCollection for CardSet {
+	fn get_cards(&self) -> &[Card] {
+		&self.0
 	}
 }
 
-impl From<Vec<&str>> for Hand {
+impl From<Vec<&str>> for CardSet {
 	fn from(cards: Vec<&str>) -> Self {
 		Self::from(
 			cards
@@ -176,123 +227,121 @@ impl From<Vec<&str>> for Hand {
 	}
 }
 
-impl From<Vec<Card>> for Hand {
-	fn from(mut cards: Vec<Card>) -> Self {
-		assert_eq!(cards.len(), 5, "poker hand must be exactly 5 cards");
-		cards.sort();
-		Self::new(cards.as_array::<5>().unwrap())
+impl From<Vec<Card>> for CardSet {
+	fn from(cards: Vec<Card>) -> Self {
+		Self(cards.into_iter().collect())
+	}
+}
+
+impl CardSet {
+	/// Checks if this card set contains a [`PokerHand::Straight`], i.e. at
+	/// least 5 of the cards' ranks can be arranged in strictly increasing
+	/// order by steps of
+	/// 1. In a [`Hand`] of 5 cards, all of the cards, can be arranged this way.
+	pub fn contains_straight(&self) -> bool {
+		let mut ranks = self.rank_set().into_iter().collect::<Vec<_>>();
+		ranks.sort();
+		if ranks.len() < 5 {
+			return false;
+		}
+		// account for low ace if high ace is present
+		if ranks.contains(&Rank::Ace) {
+			ranks.insert(0, Rank::Ace);
+		}
+
+		let (mut streak, mut highest_streak) = (1, 1);
+		for [rank_1, rank_2] in ranks.array_windows::<2>() {
+			if rank_1.is_adjacent_to(*rank_2) {
+				streak += 1;
+				if highest_streak < streak {
+					highest_streak = streak;
+				}
+			} else {
+				streak = 1;
+			}
+		}
+
+		highest_streak >= 5
+	}
+
+	/// Checks if this card set contains a [`PokerHand::Flush`], i.e. at least 5
+	/// of the cards' suits are the same. In a [`Hand`] of 5 cards, all of the
+	/// cards' suits are the same. If a
+	pub fn contains_flush(&self) -> bool {
+		self.suit_counts().iter().any(|(_, count)| *count >= 5)
+	}
+}
+
+/// A played set of cards in Balatro.
+///
+/// This structure is a restrictive version of [`CardSet`] - a set of cards can
+/// have any number of cards, but this set is restricted to only having 1 to 5
+/// cards. This enables the hand to be categorized into a particular
+/// [`PokerHand`]. [`PokerHand`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hand(pub CardSet);
+
+impl Deref for Hand {
+	type Target = CardSet;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl CardCollection for Hand {
+	fn get_cards(&self) -> &[Card] {
+		&self.0
+	}
+}
+
+impl<const N: usize> From<[&str; N]> for Hand {
+	fn from(cards: [&str; N]) -> Self {
+		Hand::new(
+			cards
+				.into_iter()
+				.map(|c| Card::from_str(c).unwrap())
+				.collect(),
+		)
 	}
 }
 
 impl Hand {
-	/// Constructs a new hand. Note that cards are sorted then stored.
-	pub fn new(cards: &FiveCards) -> Self {
-		let mut cards_vec = cards.to_vec();
-		cards_vec.sort();
-		Self(*cards_vec.as_array::<5>().unwrap())
+	/// Constructs a new hand.
+	pub fn new(cards: Vec<Card>) -> Self {
+		assert!(
+			!cards.is_empty() && cards.len() <= 5,
+			"a hand must be between 1 or 5 cards",
+		);
+		Hand(CardSet(cards))
 	}
 
-	/// Returns the set of ranks this hand contains.
-	pub fn rank_set(&self) -> HashSet<Rank> {
-		self.iter().map(|card| card.0).collect()
-	}
-
-	/// Returns a [`HashMap`] of ranks this hand contains, mapping each
-	/// rank in the hand to how many cards shared that rank.
-	pub fn rank_counts(&self) -> HashMap<Rank, u8> {
-		let mut counts = HashMap::new();
-		for card in self.iter() {
-			counts
-				.entry(card.0)
-				.and_modify(|count| *count += 1)
-				.or_insert(1);
-		}
-		counts
-	}
-
-	/// Returns the set of suits this hand contains.
-	pub fn suit_set(&self) -> HashSet<Suit> {
-		self.iter().map(|card| card.1).collect()
-	}
-
-	/// Returns a [`HashMap`] of suits this hand contains, mapping each
-	/// suit in the hand to how many cards shared that rank.
-	pub fn suit_counts(&self) -> HashMap<Suit, u8> {
-		let mut counts = HashMap::new();
-		for card in self.iter() {
-			counts
-				.entry(card.1)
-				.and_modify(|count| *count += 1)
-				.or_insert(1);
-		}
-		counts
-	}
-
-	/// Checks if the provided hand contains a pair, i.e. at least two cards
+	/// Checks if this hand contains a pair, i.e. at least two cards
 	/// share the same rank.
 	pub fn contains_pair(&self) -> bool {
-		self.rank_set().len() <= 4
+		self.rank_counts().values().any(|count| *count >= 2)
 	}
 
-	/// Checks if the provided hand contains a two pair, i.e. there are at least
-	/// two distinct pairs in the hand.
+	/// Checks if this hand contains a two pair, i.e. there are at least
+	/// two distinct pairs.
 	pub fn contains_two_pair(&self) -> bool {
-		let rank_set = self.rank_set();
-		// a two pair has 3 unique ranks (2 if it is a full house).
-		if rank_set.len() != 2 && rank_set.len() != 3 {
-			return false;
-		}
-
-		let rank_counts = self.rank_counts();
-		// a two pair/full house's rank counts looks like: [2, 2, 1] or [2, 3].
-		rank_counts.values().collect::<HashSet<_>>().contains(&2)
+		self.rank_counts()
+			.iter()
+			.filter(|(_, count)| **count >= 2)
+			.count() >= 2
 	}
 
-	/// Checks if the provided hand contains a three of a kind, i.e. at least
+	/// Checks if hand contains a three of a kind, i.e. at least
 	/// three cards share the same rank.
 	pub fn contains_three_of_a_kind(&self) -> bool {
-		*self.rank_counts().values().max().unwrap() == 3
-	}
-
-	/// Checks if the provided hand contains a straight, i.e. all of the
-	/// cards' ranks can be arranged in strictly increasing order, by steps of
-	/// 1, and the ace (if there is one) is not simultaneously a high or low
-	/// ace. For example, JKQA2 is not a straight.
-	pub fn contains_straight(&self) -> bool {
-		fn verify_adjacency(ranks: &[Rank]) -> bool {
-			ranks
-				.windows(2)
-				.map(|pair| (pair[0], pair[1]))
-				.all(|(rank_1, rank_2)| rank_1.is_adjacent_to(rank_2))
-		}
-
-		let mut ranks: Vec<_> = self.rank_set().into_iter().collect();
-		if ranks.len() < 5 {
-			return false;
-		}
-		ranks.sort();
-
-		if ranks.contains(&Rank::Ace) {
-			let ace_straights = [
-				[Rank::Two, Rank::Three, Rank::Four, Rank::Five, Rank::Ace],
-				[Rank::Ten, Rank::Jack, Rank::Queen, Rank::King, Rank::Ace],
-			];
-			return ace_straights.contains(ranks.as_array().unwrap());
-		}
-
-		verify_adjacency(&ranks)
-	}
-
-	/// Checks if the provided hand contains a flush, i.e. all of the cards'
-	/// suits are the same.
-	pub fn contains_flush(&self) -> bool {
-		self.suit_set().len() == 1
+		self.rank_counts().values().any(|count| *count >= 3)
 	}
 
 	/// Checks if the provided hand is a full house, i.e. there is a
 	/// three of a kind and pair, distinct in rank.
 	pub fn is_full_house(&self) -> bool {
-		self.rank_set().len() == 2 && !self.is_four_of_a_kind()
+		let counts = self.rank_counts().values().copied().collect::<Vec<_>>();
+		counts.contains((&2)) && counts.contains((&3))
 	}
 
 	/// Checks if the provided hand is a four of a kind, i.e. all four
@@ -316,7 +365,7 @@ impl Hand {
 	/// The poker hand checking implmeneted in this struct assumes that the
 	/// hand was acquired from an unmodified, standard deck of 52 playing poker
 	/// cards. For this reason, this function will behave exactly like
-	/// [[`Self::is_poker_hand`]] for some *rarer, more restrictive* hand
+	/// [`Self::is_poker_hand`] for the *rarer, more specific* hand
 	/// types: [`PokerHand::FullHouse`], [`PokerHand::FourOfAKind`], and
 	/// [`PokerHand::StraightFlush`].
 	pub fn contains_poker_hand(&self, poker_hand: PokerHand) -> bool {
@@ -355,7 +404,9 @@ impl Hand {
 				self.contains_two_pair() && !self.is_full_house()
 			},
 			PokerHand::ThreeOfAKind => {
-				self.contains_three_of_a_kind() && !self.contains_two_pair()
+				self.contains_three_of_a_kind()
+					&& !self.contains_two_pair()
+					&& !self.is_four_of_a_kind()
 			},
 			PokerHand::Straight => {
 				self.contains_straight() && !self.contains_flush()
@@ -381,20 +432,19 @@ impl Hand {
 			.filter(|(_, is_poker_hand)| *is_poker_hand)
 			.collect::<Vec<_>>();
 		if result.len() != 1 {
-			dbg!(result);
 			panic!("only one hand should return true");
 		}
 		result[0].0
 	}
 }
 
-/// A standard pack of 52 playing [`Card`]`s`.
-pub struct Pack {
-	cards: Vec<Card>,
+/// A standard deck of 52 playing [`Card`]`s`.
+pub struct Deck {
+	pub cards: Vec<Card>,
 	rng: ThreadRng,
 }
 
-impl Default for Pack {
+impl Default for Deck {
 	fn default() -> Self {
 		let mut cards = vec![];
 		for rank in all::<Rank>() {
@@ -406,7 +456,7 @@ impl Default for Pack {
 	}
 }
 
-impl Deref for Pack {
+impl Deref for Deck {
 	type Target = Vec<Card>;
 
 	fn deref(&self) -> &Self::Target {
@@ -414,8 +464,14 @@ impl Deref for Pack {
 	}
 }
 
-impl Pack {
-	/// Creates a new pack of cards with the given cards, and the option to
+impl CardCollection for Deck {
+	fn get_cards(&self) -> &[Card] {
+		&self.cards
+	}
+}
+
+impl Deck {
+	/// Creates a new deck of cards with the given cards, and the option to
 	/// shuffle.
 	pub fn new(mut cards: Vec<Card>, shuffle: bool) -> Self {
 		let mut rng = rand::rng();
@@ -425,7 +481,7 @@ impl Pack {
 		Self { cards, rng }
 	}
 
-	pub fn draw_top_random(&mut self, n: usize) -> Vec<Card> {
+	pub fn draw(&mut self, n: usize) -> Vec<Card> {
 		assert!(
 			n <= self.cards.len(),
 			"cannot draw more cards than are available"
@@ -443,24 +499,40 @@ mod test {
 		PokerHand,
 	};
 
-	fn high_6_test_hand() -> Hand {
+	fn lone_ace_of_hearts() -> Hand {
+		Hand::from(["ah"])
+	}
+
+	fn high_6_hand() -> Hand {
 		Hand::from(["ah", "2h", "3h", "4h", "6s"])
 	}
 
-	fn weird_straight_high_ace_test_hand() -> Hand {
+	fn weird_straight_high_ace_hand() -> Hand {
 		Hand::from(["jh", "qh", "kh", "ah", "2s"])
 	}
 
-	fn ace_pair_test_hand() -> Hand {
+	fn lone_ace_pair() -> Hand {
+		Hand::from(["ah", "as"])
+	}
+
+	fn ace_pair_hand() -> Hand {
 		Hand::from(["ah", "as", "3h", "4h", "6s"])
 	}
 
-	fn ace_three_two_pair_test_hand() -> Hand {
+	fn ace_three_two_pair_hand() -> Hand {
 		Hand::from(["ah", "as", "3h", "3s", "6s"])
 	}
 
-	fn three_aces_test_hand() -> Hand {
+	fn lone_ace_three_two_pair() -> Hand {
+		Hand::from(["ah", "as", "3h", "3s"])
+	}
+
+	fn three_aces_hand() -> Hand {
 		Hand::from(["ah", "as", "ac", "4h", "5h"])
+	}
+
+	fn lone_three_aces() -> Hand {
+		Hand::from(["ah", "as", "ac"])
 	}
 
 	fn ace_to_five_straight_test_hand() -> Hand {
@@ -487,6 +559,10 @@ mod test {
 		Hand::from(["ah", "as", "ac", "ad", "6h"])
 	}
 
+	fn lone_four_aces() -> Hand {
+		Hand::from(["ah", "as", "ac", "ad"])
+	}
+
 	fn ace_to_five_heart_straight_flush_test_hand() -> Hand {
 		Hand::from(["ah", "2h", "3h", "4h", "5h"])
 	}
@@ -495,14 +571,30 @@ mod test {
 		Hand::from(["th", "jh", "qh", "kh", "ah"])
 	}
 
+	#[should_panic(expected = "a hand must be between 1 or 5 cards")]
+	#[test]
+	fn cannot_make_an_empty_hand() {
+		let _ = Hand::from([]);
+	}
+
+	#[should_panic(expected = "a hand must be between 1 or 5 cards")]
+	#[test]
+	fn cannot_make_a_hand_with_6_cards() {
+		let _ = Hand::from(["ah", "ah", "ah", "ah", "ah", "ah"]);
+	}
+
 	#[test]
 	fn high_card_tests() {
 		assert!(
-			high_6_test_hand().is_poker_hand(PokerHand::HighCard),
+			high_6_hand().is_poker_hand(PokerHand::HighCard),
 			"high 6 card"
 		);
 		assert!(
-			!ace_pair_test_hand().is_poker_hand(PokerHand::HighCard),
+			lone_ace_of_hearts().is_poker_hand(PokerHand::HighCard),
+			"lone high ace"
+		);
+		assert!(
+			!ace_pair_hand().is_poker_hand(PokerHand::HighCard),
 			"pair is not a high card"
 		);
 		assert!(
@@ -518,20 +610,21 @@ mod test {
 
 	#[test]
 	pub fn pair_tests() {
+		assert!(ace_pair_hand().is_poker_hand(PokerHand::Pair), "ace pair");
 		assert!(
-			ace_pair_test_hand().is_poker_hand(PokerHand::Pair),
-			"ace pair"
+			lone_ace_pair().is_poker_hand(PokerHand::Pair),
+			"lone ace pair"
 		);
 		assert!(
-			!high_6_test_hand().is_poker_hand(PokerHand::Pair),
+			!high_6_hand().is_poker_hand(PokerHand::Pair),
 			"high card is not a pair"
 		);
 		assert!(
-			!ace_three_two_pair_test_hand().is_poker_hand(PokerHand::Pair),
+			!ace_three_two_pair_hand().is_poker_hand(PokerHand::Pair),
 			"two pair is not a pair"
 		);
 		assert!(
-			!three_aces_test_hand().is_poker_hand(PokerHand::Pair),
+			!three_aces_hand().is_poker_hand(PokerHand::Pair),
 			"three of a kind is not a pair"
 		);
 		assert!(
@@ -543,11 +636,15 @@ mod test {
 	#[test]
 	pub fn two_pair_tests() {
 		assert!(
-			ace_three_two_pair_test_hand().is_poker_hand(PokerHand::TwoPair),
+			ace_three_two_pair_hand().is_poker_hand(PokerHand::TwoPair),
 			"ace & 3 two pair"
 		);
 		assert!(
-			!three_aces_test_hand().is_poker_hand(PokerHand::TwoPair),
+			lone_ace_three_two_pair().is_poker_hand(PokerHand::TwoPair),
+			"lone ace & 3 two pair"
+		);
+		assert!(
+			!three_aces_hand().is_poker_hand(PokerHand::TwoPair),
 			"three of a kind is not a two pair"
 		);
 		assert!(
@@ -563,16 +660,19 @@ mod test {
 	#[test]
 	pub fn three_of_a_kind_tests() {
 		assert!(
-			three_aces_test_hand().is_poker_hand(PokerHand::ThreeOfAKind),
+			three_aces_hand().is_poker_hand(PokerHand::ThreeOfAKind),
 			"three aces of a kind"
 		);
 		assert!(
-			!ace_pair_test_hand().is_poker_hand(PokerHand::ThreeOfAKind),
+			lone_three_aces().is_poker_hand(PokerHand::ThreeOfAKind),
+			"three aces"
+		);
+		assert!(
+			!ace_pair_hand().is_poker_hand(PokerHand::ThreeOfAKind),
 			"pair is not a three of a kind"
 		);
 		assert!(
-			!ace_three_two_pair_test_hand()
-				.is_poker_hand(PokerHand::ThreeOfAKind),
+			!ace_three_two_pair_hand().is_poker_hand(PokerHand::ThreeOfAKind),
 			"two pair is not a three of a kind"
 		);
 		assert!(
@@ -602,16 +702,15 @@ mod test {
 			"straight flush is not a straight"
 		);
 		assert!(
-			!high_6_test_hand().is_poker_hand(PokerHand::Straight),
+			!high_6_hand().is_poker_hand(PokerHand::Straight),
 			"high card is not a straight"
 		);
 		assert!(
-			!weird_straight_high_ace_test_hand()
-				.is_poker_hand(PokerHand::Straight),
+			!weird_straight_high_ace_hand().is_poker_hand(PokerHand::Straight),
 			"weird straight (jkqa2) is not a valid straight"
 		);
 		assert!(
-			!ace_pair_test_hand().is_poker_hand(PokerHand::ThreeOfAKind),
+			!ace_pair_hand().is_poker_hand(PokerHand::ThreeOfAKind),
 			"pair is not a straight"
 		);
 	}
@@ -632,11 +731,11 @@ mod test {
 			"straight flush is not a flush"
 		);
 		assert!(
-			!high_6_test_hand().is_poker_hand(PokerHand::Flush),
+			!high_6_hand().is_poker_hand(PokerHand::Flush),
 			"high card is not a flush"
 		);
 		assert!(
-			!ace_pair_test_hand().is_poker_hand(PokerHand::Flush),
+			!ace_pair_hand().is_poker_hand(PokerHand::Flush),
 			"pair is not a straight"
 		);
 	}
@@ -648,11 +747,11 @@ mod test {
 			"ace four full house"
 		);
 		assert!(
-			!ace_three_two_pair_test_hand().is_poker_hand(PokerHand::FullHouse),
+			!ace_three_two_pair_hand().is_poker_hand(PokerHand::FullHouse),
 			"two pair is not a full house"
 		);
 		assert!(
-			!three_aces_test_hand().is_poker_hand(PokerHand::FullHouse),
+			!three_aces_hand().is_poker_hand(PokerHand::FullHouse),
 			"three of a kind is not a full house"
 		);
 		assert!(
@@ -666,6 +765,10 @@ mod test {
 		assert!(
 			four_aces_test_hand().is_poker_hand(PokerHand::FourOfAKind),
 			"four aces"
+		);
+		assert!(
+			lone_four_aces().is_poker_hand(PokerHand::FourOfAKind),
+			"lone four aces"
 		);
 		assert!(
 			!ace_four_full_house_test_hand()
@@ -700,27 +803,27 @@ mod test {
 	#[test]
 	pub fn get_poker_hand_type_test() {
 		assert_eq!(
-			high_6_test_hand().get_poker_hand_type(),
+			high_6_hand().get_poker_hand_type(),
 			PokerHand::HighCard,
 			"high 6 is a high card"
 		);
 		assert_eq!(
-			weird_straight_high_ace_test_hand().get_poker_hand_type(),
+			weird_straight_high_ace_hand().get_poker_hand_type(),
 			PokerHand::HighCard,
 			"weird straight is a high card"
 		);
 		assert_eq!(
-			ace_pair_test_hand().get_poker_hand_type(),
+			ace_pair_hand().get_poker_hand_type(),
 			PokerHand::Pair,
 			"ace pair is a pair"
 		);
 		assert_eq!(
-			ace_three_two_pair_test_hand().get_poker_hand_type(),
+			ace_three_two_pair_hand().get_poker_hand_type(),
 			PokerHand::TwoPair,
 			"ace & three two pair is a two pair"
 		);
 		assert_eq!(
-			three_aces_test_hand().get_poker_hand_type(),
+			three_aces_hand().get_poker_hand_type(),
 			PokerHand::ThreeOfAKind,
 			"three aces is a three of a kind"
 		);
