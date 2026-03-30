@@ -1,6 +1,6 @@
 #![expect(unused)]
 
 pub mod cards;
-pub mod game;
+pub mod round;
 pub mod sim;
 pub mod strats;

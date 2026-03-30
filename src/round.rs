@@ -12,12 +12,12 @@ use crate::cards::{
 /// The simulation includes every information a Balatro player has access
 /// to: cards currently held in hand, discarded cards, and remaining cards in
 /// the deck.
-pub struct Game {
+pub struct Round {
 	/// Cards held in the hand.
 	pub held: CardSet,
 
 	/// The hand's capacity.
-	pub capacity: usize,
+	pub held_capacity: usize,
 
 	/// The deck to draw cards from.
 	pub deck: Deck,
@@ -32,21 +32,27 @@ pub struct Game {
 	pub hands: usize,
 }
 
-impl Game {
+impl Round {
+	/// Construct a new round, given a capacity, a [`Deck`], a given number of
+	/// discards and hands, and no held cards in the beginning.
 	pub fn new(
-		capacity: usize,
+		held_capacity: usize,
 		deck: Deck,
 		discards: usize,
 		hands: usize,
 	) -> Self {
 		Self {
 			held: CardSet(Vec::new()),
-			capacity,
+			held_capacity,
 			deck,
 			discard_pile: vec![],
 			discards,
 			hands,
 		}
+	}
+
+	pub fn draw(&mut self, n: usize) {
+		self.held.0.extend(self.deck.draw(n));
 	}
 
 	/// A default simulation of Balatro card drawing on White stake (the easiest

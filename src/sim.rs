@@ -2,7 +2,7 @@
 
 use crate::{
 	cards::PokerHand,
-	game::Game,
+	round::Round,
 	strats::Strategy,
 };
 
@@ -15,17 +15,17 @@ pub struct SimResults {
 /// A simulation of drawing, discarding (and optionally playing) cards in
 /// Balatro.
 struct Simulation {
-	/// The Balatro game this simulation is looking at.
-	game: Game,
+	/// The Balatro round this simulation is looking at.
+	round: Round,
 
 	/// The drawing & discarding strategy this simulation is using.
 	strategy: Box<dyn Strategy>,
 }
 
 impl Simulation {
-	pub fn new<S: Strategy + 'static>(game: Game, strategy: S) -> Self {
+	pub fn new<S: Strategy + 'static>(round: Round, strategy: S) -> Self {
 		Self {
-			game,
+			round,
 			strategy: Box::new(strategy),
 		}
 	}

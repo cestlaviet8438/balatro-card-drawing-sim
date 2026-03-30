@@ -6,7 +6,10 @@ use std::{
 		HashSet,
 	},
 	error::Error,
-	ops::Deref,
+	ops::{
+		Deref,
+		DerefMut,
+	},
 	str::FromStr,
 };
 
@@ -111,20 +114,17 @@ impl FromStr for Suit {
 }
 
 /// A collection of cards.
-pub trait CardCollection {
-	/// Returns a view into the cards this collection contains.
-	fn get_cards(&self) -> &[Card];
-
+pub trait CardCollection: AsRef<[Card]> + AsMut<[Card]> {
 	/// Returns the set of ranks this collection contains.
 	fn rank_set(&self) -> HashSet<Rank> {
-		self.get_cards().iter().map(|card| card.0).collect()
+		self.as_ref().iter().map(|card| card.0).collect()
 	}
 
 	/// Returns a [`HashMap`] of ranks this collection contains, mapping each
 	/// rank in the hand to how many cards shared that rank.
 	fn rank_counts(&self) -> HashMap<Rank, usize> {
 		let mut counts = HashMap::new();
-		for card in self.get_cards() {
+		for card in self.as_ref() {
 			counts
 				.entry(card.0)
 				.and_modify(|count| *count += 1)
@@ -135,32 +135,20 @@ pub trait CardCollection {
 
 	/// Returns the set of suits this collection contains.
 	fn suit_set(&self) -> HashSet<Suit> {
-		self.get_cards().iter().map(|card| card.1).collect()
+		self.as_ref().iter().map(|card| card.1).collect()
 	}
 
 	/// Returns a [`HashMap`] of suits this collection contains, mapping each
 	/// suit in the hand to how many cards shared that rank.
 	fn suit_counts(&self) -> HashMap<Suit, usize> {
 		let mut counts = HashMap::new();
-		for card in self.get_cards() {
+		for card in self.as_ref() {
 			counts
 				.entry(card.1)
 				.and_modify(|count| *count += 1)
 				.or_insert(1);
 		}
 		counts
-	}
-}
-
-impl CardCollection for Vec<Card> {
-	fn get_cards(&self) -> &[Card] {
-		self
-	}
-}
-
-impl CardCollection for &[Card] {
-	fn get_cards(&self) -> &[Card] {
-		self
 	}
 }
 
@@ -232,19 +220,33 @@ pub enum PokerHand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CardSet(pub Vec<Card>);
 
+impl AsRef<[Card]> for CardSet {
+	fn as_ref(&self) -> &[Card] {
+		&self.0
+	}
+}
+
+impl AsMut<[Card]> for CardSet {
+	fn as_mut(&mut self) -> &mut [Card] {
+		&mut self.0
+	}
+}
+
 impl Deref for CardSet {
-	type Target = Vec<Card>;
+	type Target = [Card];
 
 	fn deref(&self) -> &Self::Target {
 		&self.0
 	}
 }
 
-impl CardCollection for CardSet {
-	fn get_cards(&self) -> &[Card] {
-		&self.0
+impl DerefMut for CardSet {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.0
 	}
 }
+
+impl CardCollection for CardSet {}
 
 impl<C: Into<Card>> FromIterator<C> for CardSet {
 	fn from_iter<T: IntoIterator<Item = C>>(iter: T) -> Self {
@@ -310,6 +312,18 @@ impl CardSet {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Hand(pub CardSet);
 
+impl AsRef<[Card]> for Hand {
+	fn as_ref(&self) -> &[Card] {
+		&self.0
+	}
+}
+
+impl AsMut<[Card]> for Hand {
+	fn as_mut(&mut self) -> &mut [Card] {
+		&mut self.0
+	}
+}
+
 impl Deref for Hand {
 	type Target = CardSet;
 
@@ -318,11 +332,13 @@ impl Deref for Hand {
 	}
 }
 
-impl CardCollection for Hand {
-	fn get_cards(&self) -> &[Card] {
-		&self.0
+impl DerefMut for Hand {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.0
 	}
 }
+
+impl CardCollection for Hand {}
 
 impl<C: Into<Card>> FromIterator<C> for Hand {
 	fn from_iter<T: IntoIterator<Item = C>>(iter: T) -> Self {
@@ -461,16 +477,19 @@ impl Hand {
 			})
 			.filter(|(_, is_poker_hand)| *is_poker_hand)
 			.collect::<Vec<_>>();
-		if result.len() != 1 {
-			panic!("only one hand should return true");
-		}
+		assert!(
+			result.len() == 1,
+			"only one hand should return true. received {result:?}"
+		);
 		result[0].0
 	}
 }
 
 /// A standard deck of 52 playing [`Card`]`s`.
+/// For the purposes of the simulation, no duplicate cards are allowed, so a
+/// [`HashSet`] is used to contain the cards.
 pub struct Deck {
-	pub cards: Vec<Card>,
+	cards: Vec<Card>,
 	rng: ThreadRng,
 }
 
@@ -486,24 +505,41 @@ impl Default for Deck {
 	}
 }
 
+impl AsRef<[Card]> for Deck {
+	fn as_ref(&self) -> &[Card] {
+		&self.cards
+	}
+}
+
+impl AsMut<[Card]> for Deck {
+	fn as_mut(&mut self) -> &mut [Card] {
+		&mut self.cards
+	}
+}
+
 impl Deref for Deck {
-	type Target = Vec<Card>;
+	type Target = [Card];
 
 	fn deref(&self) -> &Self::Target {
 		&self.cards
 	}
 }
 
-impl CardCollection for Deck {
-	fn get_cards(&self) -> &[Card] {
-		&self.cards
+impl DerefMut for Deck {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.cards
 	}
 }
+
+impl CardCollection for Deck {}
 
 impl Deck {
 	/// Creates a new deck of cards with the given cards, and the option to
 	/// shuffle.
+	///
+	/// Cards will be deduplicated.
 	pub fn new(mut cards: Vec<Card>, shuffle: bool) -> Self {
+		cards.dedup();
 		let mut rng = rand::rng();
 		if shuffle {
 			cards.shuffle(&mut rng);
@@ -521,6 +557,17 @@ impl Deck {
 		assert!(n > 0, "why are you drawing 0 cards");
 		let remove_slice_from = self.cards.len() - n;
 		self.cards.drain(remove_slice_from..).collect()
+	}
+
+	/// Utility function to draw certain cards from the deck.
+	/// The cards' order is not guaranteed after this - the [`Self::cards`]
+	/// property is turned into a [`HashSet`] and turned back into a [`Vec`].
+	pub(crate) fn draw_certain(&mut self, cards: &[Card]) {
+		let mut card_set: HashSet<_> = self.iter().copied().collect();
+		for card in cards {
+			card_set.remove(card);
+		}
+		self.cards = card_set.into_iter().collect();
 	}
 }
 
