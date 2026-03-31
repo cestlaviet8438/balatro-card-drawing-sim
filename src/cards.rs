@@ -57,7 +57,7 @@ impl FromStr for Rank {
 	type Err = Box<dyn Error>;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		assert_eq!(
+		debug_assert_eq!(
 			s.len(),
 			1,
 			"rank string has to be one character. received {s}"
@@ -98,7 +98,7 @@ impl FromStr for Suit {
 	type Err = Box<dyn Error>;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		assert_eq!(
+		debug_assert_eq!(
 			s.len(),
 			1,
 			"suit string has to be one character. received {s}"
@@ -110,6 +110,36 @@ impl FromStr for Suit {
 			's' | 'S' | '♠' | '♤' => Suit::Spade,
 			_ => panic!("unknown suit character: {s}"),
 		})
+	}
+}
+
+/// A playing card in Balatro/Poker, in general.
+///
+/// For this simulation, enhancements and editions are not included.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Card(pub Rank, pub Suit);
+
+impl FromStr for Card {
+	type Err = Box<dyn Error>;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		debug_assert_eq!(
+			s.len(),
+			2,
+			"card string has to be exactly two characters. received {s}"
+		);
+		let mut s_chars = s.chars();
+		let (rank, suit) = (
+			Rank::from_str(&String::from(s_chars.next().unwrap()))?,
+			Suit::from_str(&String::from(s_chars.next().unwrap()))?,
+		);
+		Ok(Self(rank, suit))
+	}
+}
+
+impl From<&Card> for Card {
+	fn from(card: &Card) -> Self {
+		*card
 	}
 }
 
@@ -149,30 +179,6 @@ pub trait CardCollection: AsRef<[Card]> + AsMut<[Card]> {
 				.or_insert(1);
 		}
 		counts
-	}
-}
-
-/// A playing card in Balatro/Poker, in general.
-///
-/// For this simulation, enhancements and editions are not included.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Card(pub Rank, pub Suit);
-
-impl FromStr for Card {
-	type Err = Box<dyn Error>;
-
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		assert_eq!(
-			s.len(),
-			2,
-			"card string has to be exactly two characters. received {s}"
-		);
-		let mut s_chars = s.chars();
-		let (rank, suit) = (
-			Rank::from_str(&String::from(s_chars.next().unwrap()))?,
-			Suit::from_str(&String::from(s_chars.next().unwrap()))?,
-		);
-		Ok(Self(rank, suit))
 	}
 }
 
@@ -233,7 +239,7 @@ impl AsMut<[Card]> for CardSet {
 }
 
 impl Deref for CardSet {
-	type Target = [Card];
+	type Target = Vec<Card>;
 
 	fn deref(&self) -> &Self::Target {
 		&self.0
@@ -355,7 +361,7 @@ impl<'a> FromIterator<&'a str> for Hand {
 impl Hand {
 	/// Constructs a new hand.
 	pub fn new(cards: CardSet) -> Self {
-		assert!(
+		debug_assert!(
 			!cards.is_empty() && cards.len() <= 5,
 			"a hand must be between 1 or 5 cards. received: {cards:?}",
 		);
@@ -477,7 +483,7 @@ impl Hand {
 			})
 			.filter(|(_, is_poker_hand)| *is_poker_hand)
 			.collect::<Vec<_>>();
-		assert!(
+		debug_assert!(
 			result.len() == 1,
 			"only one hand should return true. received {result:?}"
 		);
@@ -548,15 +554,20 @@ impl Deck {
 	}
 
 	/// Draw `n` cards from the top of the deck.
+	///
+	/// Note that if there are not enough cards left, the deck will simply
+	/// be exhausted and all remaining cards are drawn. The method will,
+	/// however, panic if trying to draw from an empty deck.
 	pub fn draw(&mut self, n: usize) -> Vec<Card> {
-		assert!(
-			n <= self.cards.len(),
-			"tried to draw {n} cards when there are {} left",
-			self.len()
-		);
-		assert!(n > 0, "why are you drawing 0 cards");
-		let remove_slice_from = self.cards.len() - n;
-		self.cards.drain(remove_slice_from..).collect()
+		debug_assert!(n > 0, "why are you drawing 0 cards");
+		debug_assert!(!self.is_empty(), "cannot draw from an empty deck");
+
+		if n > self.len() {
+			self.cards.drain(..).collect()
+		} else {
+			let remove_slice_from = self.cards.len() - n;
+			self.cards.drain(remove_slice_from..).collect()
+		}
 	}
 
 	/// Utility function to draw certain cards from the deck.

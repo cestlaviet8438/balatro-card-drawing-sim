@@ -11,7 +11,7 @@ use crate::{
 		CardCollection,
 		Suit,
 	},
-	round::Round,
+	round::{Action, Round},
 	strats::Strategy,
 };
 
@@ -33,7 +33,7 @@ where
 	K: Clone + Copy + PartialEq + Eq + std::hash::Hash,
 	V: Clone + Copy + PartialOrd + Ord,
 {
-	assert!(!map.is_empty(), "no entries to get");
+	debug_assert!(!map.is_empty(), "no entries to get");
 	let max = *map.values().max().unwrap();
 	(
 		map.iter()
@@ -100,7 +100,15 @@ impl FinishFlushes {
 }
 
 impl Strategy for FinishFlushes {
-	fn get_cards_to_discard(&self, _game: &Round) -> Vec<Card> {
+	fn get_cards_to_discard(&self, _game: &Round) -> HashSet<Card> {
+		todo!()
+	}
+
+	fn get_cards_to_play(&self, round: &Round) -> HashSet<Card> {
+		todo!()
+	}
+
+	fn get_next_action(&self, round: &Round) -> Action {
 		todo!()
 	}
 }
@@ -157,6 +165,7 @@ mod test {
 
 	fn mock_game_1() -> Round {
 		let mut round = Round::white_stake_default();
+
 		round
 	}
 

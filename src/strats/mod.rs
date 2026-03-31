@@ -1,8 +1,13 @@
 //! Strategies for drawing cards, used in a simulation.
 
+use std::collections::HashSet;
+
 use crate::{
 	cards::Card,
-	round::Round,
+	round::{
+		Action,
+		Round,
+	},
 };
 
 mod flush;
@@ -11,5 +16,11 @@ mod flush;
 /// hand.
 pub trait Strategy {
 	/// Returns which cards to discard.
-	fn get_cards_to_discard(&self, game: &Round) -> Vec<Card>;
+	fn get_cards_to_discard(&self, round: &Round) -> HashSet<Card>;
+
+	/// Returns which cards to play.
+	fn get_cards_to_play(&self, round: &Round) -> HashSet<Card>;
+
+	/// Returns what action to take next.
+	fn get_next_action(&self, round: &Round) -> Action;
 }
