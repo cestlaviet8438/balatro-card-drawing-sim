@@ -137,7 +137,7 @@ impl Strategy for FavorFlushes {
 	/// If there is a flush in hand or if there is no discards left, play.
 	/// Otherwise, discard.
 	fn get_next_action(&self, round: &Round) -> Action {
-		if round.held.contains_flush() || round.discard_count == 0 {
+		if round.held.contains_flush() || round.discards_remaining == 0 {
 			Action::Play
 		} else {
 			Action::Discard
@@ -154,13 +154,22 @@ mod test {
 
 	use crate::{
 		cards::{
-			CardSet, Deck, Hand, Suit
+			CardSet,
+			Deck,
+			Hand,
+			Suit,
 		},
-		round::{Action, Round},
-		strats::{Strategy, flush::{
-			FavorFlushes,
-			get_most_frequent_entries,
-		}},
+		round::{
+			Action,
+			Round,
+		},
+		strats::{
+			Strategy,
+			flush::{
+				FavorFlushes,
+				get_most_frequent_entries,
+			},
+		},
 	};
 
 	fn standard_deck() -> Deck {
@@ -196,6 +205,7 @@ mod test {
 
 	#[test]
 	fn favor_flushes_works() {
+		// in this case round is manually manipulated.
 		let mut round = Round::white_stake_default();
 
 		round.draw_certain(&CardSet::from_iter([
@@ -218,7 +228,7 @@ mod test {
 		);
 
 		// make the strategy play trash cards instead of discard them
-		round.discard_count = 0;
+		round.discards_remaining = 0;
 		assert_eq!(
 			FavorFlushes.get_next_action(&round),
 			Action::Play,

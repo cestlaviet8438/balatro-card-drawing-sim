@@ -11,7 +11,7 @@ use crate::{
 	},
 };
 
-mod flush;
+pub mod flush;
 
 /// A more complicated version of `filter`. Based on the predicate,
 /// returns two separate collections using the provided collection, in the order

@@ -1,14 +1,27 @@
 //! Mechanisms dealing with poker cards and hands.
 
 use std::{
-	collections::{HashMap, HashSet},
+	collections::{
+		HashMap,
+		HashSet,
+	},
 	error::Error,
-	ops::{Deref, DerefMut},
+	fmt::Display,
+	ops::{
+		Deref,
+		DerefMut,
+	},
 	str::FromStr,
 };
 
-use enum_iterator::{Sequence, all};
-use rand::{rngs::ThreadRng, seq::SliceRandom};
+use enum_iterator::{
+	Sequence,
+	all,
+};
+use rand::{
+	rngs::ThreadRng,
+	seq::SliceRandom,
+};
 
 /// The rank of a playing card.
 #[derive(
@@ -30,6 +43,12 @@ pub enum Rank {
 	Ace = 14,
 }
 
+impl Display for Rank {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.to_str())
+	}
+}
+
 impl Rank {
 	/// Returns if this rank is adjacent to another rank. This condition is
 	/// required for a hand to count as a straight in poker.
@@ -37,6 +56,25 @@ impl Rank {
 		match (self, other) {
 			(Rank::Two, Rank::Ace) | (Rank::Ace, Rank::Two) => true,
 			_ => (self as u8).abs_diff(other as u8) == 1,
+		}
+	}
+
+	/// Converts the rank to a string representation.
+	pub fn to_str(&self) -> &'static str {
+		match self {
+			Rank::Two => "2",
+			Rank::Three => "3",
+			Rank::Four => "4",
+			Rank::Five => "5",
+			Rank::Six => "6",
+			Rank::Seven => "7",
+			Rank::Eight => "8",
+			Rank::Nine => "9",
+			Rank::Ten => "10",
+			Rank::Jack => "J",
+			Rank::Queen => "K",
+			Rank::King => "Q",
+			Rank::Ace => "A",
 		}
 	}
 }
@@ -82,6 +120,12 @@ pub enum Suit {
 	Spade,
 }
 
+impl Display for Suit {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", &self.to_char().to_string())
+	}
+}
+
 impl FromStr for Suit {
 	type Err = Box<dyn Error>;
 
@@ -101,11 +145,29 @@ impl FromStr for Suit {
 	}
 }
 
+impl Suit {
+	/// Returns a character representing the suit.
+	pub fn to_char(&self) -> char {
+		match self {
+			Suit::Diamond => '♦',
+			Suit::Club => '♧',
+			Suit::Heart => '♥',
+			Suit::Spade => '♤',
+		}
+	}
+}
+
 /// A playing card in Balatro/Poker, in general.
 ///
 /// For this simulation, enhancements and editions are not included.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Card(pub Rank, pub Suit);
+
+impl Display for Card {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}{}", self.0, self.1)
+	}
+}
 
 impl FromStr for Card {
 	type Err = Box<dyn Error>;
@@ -168,7 +230,32 @@ pub trait CardCollection: AsRef<[Card]> + AsMut<[Card]> {
 		}
 		freqs
 	}
+
+	/// Returns a generic array-like human-readable display string of this card
+	/// collection.
+	fn get_display(&self) -> String {
+		let cards_str = self
+			.as_ref()
+			.iter()
+			.map(|card| card.to_string())
+			.collect::<Vec<_>>()
+			.join(", ");
+		format!("[{cards_str}]")
+	}
 }
+
+// apparently this doesn't work smh
+// impl Display for dyn CardCollection {
+// 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+// 		let cards_str = self
+// 			.as_ref()
+// 			.iter()
+// 			.map(|card| card.to_string())
+// 			.collect::<Vec<_>>()
+// 			.join(", ");
+// 		write!(f, "[{cards_str}]",)
+// 	}
+// }
 
 /// Standard hands of poker. This assumes no card modifications and no joker
 /// card in the deck itself, so there is no Flush House, Flush Five, or Five of
@@ -600,7 +687,13 @@ mod test {
 	use enum_iterator::all;
 
 	use crate::cards::{
-		CardCollection, CardSet, Deck, Hand, PokerHand, Rank, Suit,
+		CardCollection,
+		CardSet,
+		Deck,
+		Hand,
+		PokerHand,
+		Rank,
+		Suit,
 	};
 
 	fn lone_ace_of_hearts() -> Hand {

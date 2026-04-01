@@ -1,9 +1,16 @@
 //! Implementation of parts of a Balatro game, core for these simulations.
 
-use std::collections::HashSet;
+use std::{
+	collections::HashSet,
+	fmt::{
+		Display,
+		Write,
+	},
+};
 
 use crate::cards::{
 	Card,
+	CardCollection,
 	CardSet,
 	Deck,
 	Hand,
@@ -25,6 +32,15 @@ pub enum Action {
 	Play,
 }
 
+impl Display for Action {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", match self {
+			Action::Discard => "discard",
+			Action::Play => "play",
+		})
+	}
+}
+
 /// A basic simulation of a Balatro round, with only the cards part and one hand
 /// (chance to play a set of cards).
 ///
@@ -40,25 +56,34 @@ pub struct Round {
 	started: bool,
 
 	/// Cards held in the hand.
-	pub held: CardSet,
+	pub(crate) held: CardSet,
 
 	/// The hand's capacity.
-	pub held_capacity: usize,
+	pub(crate) held_capacity: usize,
 
 	/// The deck to draw cards from.
-	pub deck: Deck,
+	pub(crate) deck: Deck,
 
 	/// The number of discards left.
-	pub discard_count: usize,
+	pub(crate) discards_remaining: usize,
 
 	/// The pile of cards that has been discarded.
-	pub discard_pile: Vec<Card>,
+	pub(crate) discard_pile: Vec<Card>,
 
 	/// The number of hands left.
-	pub hand_count: usize,
+	pub(crate) plays_remaining: usize,
 
 	/// The hands that have been played.
-	pub hands: Vec<Hand>,
+	pub(crate) plays: Vec<Hand>,
+
+	/// The history of actions taken during this round.
+	pub(crate) history: Vec<(Action, Hand)>,
+}
+
+impl Display for Round {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", &self.fmt_status())
+	}
 }
 
 impl Round {
@@ -77,10 +102,11 @@ impl Round {
 			held: CardSet(Vec::new()),
 			held_capacity,
 			deck,
-			discard_count: discards,
+			discards_remaining: discards,
 			discard_pile: vec![],
-			hand_count,
-			hands: vec![],
+			plays_remaining: hand_count,
+			plays: vec![],
+			history: vec![],
 		}
 	}
 
@@ -96,10 +122,35 @@ impl Round {
 		Self::new(Self::BALATRO_HELD_CAPACITY, Deck::default(), 2, 4)
 	}
 
+	/// Returns a printable string showing the round status.
+	pub fn fmt_status(&self) -> String {
+		let last_hand_string =
+			if let Some((last_action, last_hand)) = self.history.last() {
+				format!(
+					"\nlast action: {}; hand: {}",
+					last_action.to_string(),
+					last_hand.get_display()
+				)
+			} else {
+				"".into()
+			};
+
+		format!(
+			"started: {}\ndiscards remaining: {}\nplays remaining: {}\nheld: \
+			 {} (capacity {}){}",
+			self.started,
+			self.discards_remaining,
+			self.plays_remaining,
+			self.held.get_display(),
+			self.held_capacity,
+			last_hand_string,
+		)
+	}
+
 	/// Returns whether the round has finished. In Balatro, this is when
 	/// all hands have been used up (regardless of how many discards are left).
 	pub fn is_finished(&self) -> bool {
-		self.hand_count == 0
+		self.plays_remaining == 0
 	}
 
 	/// Begin the round, drawing cards to the hand to start with.
@@ -131,20 +182,21 @@ impl Round {
 	}
 
 	/// Carry out an [`Action`] in a Balatro round.
-	pub fn act(&mut self, action: Action, cards: &Hand) {
-		self.action_sanity_check(cards);
+	pub fn act(&mut self, action: Action, cards: Hand) {
+		self.action_sanity_check(&cards);
 		match action {
 			Action::Discard => {
-				assert_ne!(self.discard_count, 0, "discards have run out");
-				self.discard(cards);
-				self.discard_count -= 1;
+				assert_ne!(self.discards_remaining, 0, "discards have run out");
+				self.discard(&cards);
+				self.discards_remaining -= 1;
 			},
 			Action::Play => {
 				// action sanity has already checked if there are hands left
-				self.play(cards);
-				self.hand_count -= 1;
+				self.play(&cards);
+				self.plays_remaining -= 1;
 			},
 		}
+		self.history.push((action, cards));
 		self.draw_to_capacity();
 	}
 
@@ -183,7 +235,7 @@ impl Round {
 	}
 
 	/// Returns the first `n` cards from the hand.
-	pub(crate) fn get_first_cards(&self, n: usize) -> Vec<Card> {
+	pub(crate) fn get_first_held_cards(&self, n: usize) -> Vec<Card> {
 		self.held[0..n].iter().copied().collect()
 	}
 
@@ -196,7 +248,7 @@ impl Round {
 	/// Play certain cards from the hand.
 	pub(crate) fn play(&mut self, cards: &[Card]) {
 		self.remove_from_hand(cards);
-		self.hands.push(Hand::from_iter(cards));
+		self.plays.push(Hand::from_iter(cards));
 	}
 }
 
@@ -239,13 +291,12 @@ mod test {
 			"after play all cards have been played"
 		);
 		assert!(
-			round.hands[0].is_poker_hand(PokerHand::Flush),
+			round.plays[0].is_poker_hand(PokerHand::Flush),
 			"a flush has been played"
 		);
 	}
 
 	#[test]
-	#[should_panic]
 	fn actual_round_works() {
 		let mut round = Round::white_stake_default();
 
@@ -258,30 +309,31 @@ mod test {
 		);
 		assert_eq!(round.held.len(), 8, "8 cards are drawn during beginning");
 
-		round.act(Action::Discard, &Hand::from_iter(round.get_first_cards(5)));
+		round.act(
+			Action::Discard,
+			Hand::from_iter(round.get_first_held_cards(5)),
+		);
 		assert_eq!(round.discard_pile.len(), 5, "5 cards are discarded");
 		assert_eq!(
 			round.held.len(),
 			8,
 			"cards are redrawn to capacity after discard action"
 		);
-		assert_eq!(round.discard_count, 3 - 1, "2 discards are left");
+		assert_eq!(round.discards_remaining, 3 - 1, "2 discards are left");
 
-		round.act(Action::Play, &Hand::from_iter(round.get_first_cards(4)));
-		assert_eq!(round.hands[0].len(), 4, "4 cards are played");
+		round.act(Action::Play, Hand::from_iter(round.get_first_held_cards(4)));
+		assert_eq!(round.plays[0].len(), 4, "4 cards are played");
 		assert_eq!(
 			round.held.len(),
 			8,
 			"cards are redrawn to capacity after play action"
 		);
-		assert_eq!(round.hand_count, 4 - 1, "3 hands are left");
+		assert_eq!(round.plays_remaining, 4 - 1, "3 hands are left");
 
 		for _ in 0..3 {
-			round.act(Action::Play, &Hand::from_iter(round.get_first_cards(1)));
-			assert_eq!(
-				round.hands.last().unwrap().len(),
-				4,
-				"4 cards are played"
+			round.act(
+				Action::Play,
+				Hand::from_iter(round.get_first_held_cards(1)),
 			);
 			assert_eq!(
 				round.held.len(),
@@ -289,13 +341,20 @@ mod test {
 				"cards are redrawn to capacity after play action"
 			);
 		}
-		assert_eq!(round.hand_count, 0, "0 hands are left");
+		assert_eq!(round.plays.len(), 4, "4 total plays have been made");
+		assert_eq!(round.plays_remaining, 0, "0 hands are left");
 		assert!(
 			round.is_finished(),
 			"0 hands are left, so the round is finished"
 		);
+	}
 
-		// to trigger panic
-		round.act(Action::Play, &Hand::from_iter(round.get_first_cards(1)));
+	#[test]
+	#[should_panic]
+	fn cannot_play_when_finished() {
+		let mut round = Round::white_stake_default();
+		round.begin();
+		round.plays_remaining = 0;
+		round.act(Action::Play, Hand::from_iter(round.get_first_held_cards(1)));
 	}
 }
