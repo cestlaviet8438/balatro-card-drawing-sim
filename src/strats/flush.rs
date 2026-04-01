@@ -11,7 +11,10 @@ use crate::{
 		CardCollection,
 		Suit,
 	},
-	round::{Action, Round},
+	round::{
+		Action,
+		Round,
+	},
 	strats::Strategy,
 };
 
@@ -165,7 +168,6 @@ mod test {
 
 	fn mock_game_1() -> Round {
 		let mut round = Round::white_stake_default();
-
 		round
 	}
 

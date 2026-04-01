@@ -2,12 +2,7 @@
 
 use std::collections::HashSet;
 
-use crate::cards::{
-	Card,
-	CardSet,
-	Deck,
-	Hand,
-};
+use crate::cards::{Card, CardSet, Deck, Hand};
 
 /// An action in a Balatro round.
 ///
@@ -33,6 +28,7 @@ pub enum Action {
 /// The simulation includes every information a Balatro player has access
 /// to: cards currently held in hand, discarded cards, and remaining cards in
 /// the deck.
+#[derive(Debug, Clone)]
 pub struct Round {
 	/// Whether the round has started.
 	started: bool,
@@ -60,6 +56,8 @@ pub struct Round {
 }
 
 impl Round {
+	const BALATRO_HELD_CAPACITY: usize = 8;
+
 	/// Construct a new round, given a capacity, a [`Deck`], a given number of
 	/// discards and hands, and no held cards in the beginning.
 	pub fn new(
@@ -83,13 +81,13 @@ impl Round {
 	/// A default simulation of Balatro card drawing on White stake (the easiest
 	/// difficulty): 4 hands and 3 discards are provided.
 	pub fn white_stake_default() -> Self {
-		Self::new(8, Deck::default(), 3, 4)
+		Self::new(Self::BALATRO_HELD_CAPACITY, Deck::default(), 3, 4)
 	}
 
 	/// A default simulation of Balatro card drawing on Gold stake (the hardest
 	/// difficulty): 4 hands and 2 discards are provided.
 	pub fn gold_stake_default() -> Self {
-		Self::new(8, Deck::default(), 2, 4)
+		Self::new(Self::BALATRO_HELD_CAPACITY, Deck::default(), 2, 4)
 	}
 
 	/// Returns whether the round has finished. In Balatro, this is when
@@ -100,13 +98,14 @@ impl Round {
 
 	/// Begin the round, drawing cards to the hand to start with.
 	pub fn begin(&mut self) {
-		assert!(!self.started, "the round is already started");
+		assert!(!self.started, "cannot start an already started round");
+		self.started = true;
 		self.draw_to_capacity();
 	}
 
 	/// Asserts that during an [`Action`], between 1 and 5 cards are selected
 	/// and all of them are from the hand/currently held.
-	fn action_sanity_check(&self, cards: &HashSet<Card>) {
+	fn action_sanity_check(&self, cards: &[Card]) {
 		assert!(
 			!cards.is_empty() && cards.len() <= 5,
 			"an action can only be done with between 1 to 5 cards selected. \
@@ -118,14 +117,19 @@ impl Round {
 			 received {cards:?}"
 		);
 		assert!(
-			self.is_finished(),
-			"the round is finished - no more actions can be taken."
+			!self.is_finished(),
+			"cannot act when round is finished"
+		);
+		assert_eq!(
+			cards.len(),
+			cards.iter().collect::<HashSet<_>>().len(),
+			"no duplicate cards are allowed. received {cards:?}"
 		);
 	}
 
 	/// Carry out an [`Action`] in a Balatro round.
-	pub fn act(&mut self, action: Action, cards: HashSet<Card>) {
-		self.action_sanity_check(&cards);
+	pub fn act(&mut self, action: Action, cards: &[Card]) {
+		self.action_sanity_check(cards);
 		match action {
 			Action::Discard => {
 				assert_ne!(self.discard_count, 0, "discards have run out");
@@ -133,7 +137,7 @@ impl Round {
 				self.discard_count -= 1;
 			},
 			Action::Play => {
-				assert_ne!(self.hand_count, 0, "hands have run out");
+				// action sanity has already checked if there are hands left
 				self.play(cards);
 				self.hand_count -= 1;
 			},
@@ -142,14 +146,14 @@ impl Round {
 	}
 
 	/// Get the number of cards to draw.
-	fn get_cards_to_draw_count(&self) -> usize {
+	pub fn get_cards_to_draw_count(&self) -> usize {
 		self.held_capacity - self.held.len()
 	}
 
 	/// Draw the top cards in the deck to the hand's capacity.
 	/// Note that the order of the deck is not guaranteed to be preserved
 	/// between every draw or game action.
-	fn draw_to_capacity(&mut self) {
+	pub(crate) fn draw_to_capacity(&mut self) {
 		let draw_count = self.get_cards_to_draw_count();
 		assert_ne!(
 			draw_count, 0,
@@ -159,21 +163,106 @@ impl Round {
 		self.held.extend(self.deck.draw(draw_count));
 	}
 
+	/// Draw certain cards to the hand.
+	/// This is used mostly to create mock hands for testing. Drawing over
+	/// the capacity is not checked.
+	pub(crate) fn draw_certain(&mut self, cards: &[Card]) {
+		self.deck.draw_certain(cards);
+		self.held.extend_from_slice(cards);
+	}
+
 	/// Removes certain cards from the hand.
-	fn remove_from_hand(&mut self, cards: &HashSet<Card>) {
+	pub(crate) fn remove_from_hand(&mut self, cards: &[Card]) {
 		let held_set: HashSet<_> = self.held.iter().copied().collect();
-		self.held = held_set.difference(&cards).collect();
+		self.held = held_set
+			.difference(&cards.iter().copied().collect())
+			.collect();
+	}
+
+	/// Returns the first `n` cards from the hand.
+	pub(crate) fn get_first_cards(&self, n: usize) -> Vec<Card> {
+		self.held[0..n].iter().copied().collect()
 	}
 
 	/// Discard certain cards from the hand.
-	fn discard(&mut self, cards: HashSet<Card>) {
-		self.remove_from_hand(&cards);
+	fn discard(&mut self, cards: &[Card]) {
+		self.remove_from_hand(cards);
 		self.discard_pile.extend(cards);
 	}
 
 	/// Play certain cards from the hand.
-	fn play(&mut self, cards: HashSet<Card>) {
-		self.remove_from_hand(&cards);
+	fn play(&mut self, cards: &[Card]) {
+		self.remove_from_hand(cards);
 		self.hands.push(Hand::from_iter(cards));
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use std::collections::HashSet;
+
+	use crate::{
+		cards::{CardSet, PokerHand},
+		round::{Action, Round},
+	};
+
+	#[test]
+	fn manual_round_works() {
+		let mut round = Round::white_stake_default();
+
+		let flush = vec!["ah", "2h", "3h", "4h", "6h"];
+		let other_cards = vec!["7s", "8s", "9s"];
+
+		let flush_and_other =
+			CardSet::from_iter([flush.clone(), other_cards.clone()].concat());
+		round.draw_certain(&flush_and_other);
+		assert_eq!(round.held.len(), 8, "currently round has 8 held cards");
+
+		round.discard(&CardSet::from_iter(other_cards));
+		assert_eq!(round.held.len(), 5, "after discard round has 5 cards");
+
+		let flush = CardSet::from_iter(["ah", "2h", "3h", "4h", "6h"]);
+		round.play(&flush);
+		assert_eq!(
+			round.held.len(),
+			0,
+			"after play all cards have been played"
+		);
+		assert!(
+			round.hands[0].is_poker_hand(PokerHand::Flush),
+			"a flush has been played"
+		);
+	}
+
+	#[test]
+	#[should_panic]
+	fn actual_round_works() {
+		let mut round = Round::white_stake_default();
+		
+		round.begin();
+
+		assert_eq!(round.deck.len(), 52 - 8, "8 cards are drawn during beginning");
+		assert_eq!(round.held.len(), 8, "8 cards are drawn during beginning");
+
+		round.act(Action::Discard, &round.get_first_cards(5));
+		assert_eq!(round.discard_pile.len(), 5, "5 cards are discarded");
+		assert_eq!(round.held.len(), 8, "cards are redrawn to capacity after discard action");
+		assert_eq!(round.discard_count, 3 - 1, "2 discards are left");
+
+		round.act(Action::Play, &round.get_first_cards(4));
+		assert_eq!(round.hands[0].len(), 4, "4 cards are played");
+		assert_eq!(round.held.len(), 8, "cards are redrawn to capacity after play action");
+		assert_eq!(round.hand_count, 4 - 1, "3 hands are left");
+
+		for _ in 0..3 {
+			round.act(Action::Play, &round.get_first_cards(1));
+			assert_eq!(round.hands.last().unwrap().len(), 4, "4 cards are played");
+			assert_eq!(round.held.len(), 8, "cards are redrawn to capacity after play action");
+		}
+		assert_eq!(round.hand_count, 0, "0 hands are left");
+		assert!(round.is_finished(), "0 hands are left, so the round is finished");
+		
+		// to trigger panic
+		round.act(Action::Play, &round.get_first_cards(1));
 	}
 }

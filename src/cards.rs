@@ -238,6 +238,12 @@ impl AsMut<[Card]> for CardSet {
 	}
 }
 
+impl From<CardSet> for HashSet<Card> {
+	fn from(set: CardSet) -> Self {
+		set.0.into_iter().collect()
+	}
+}
+
 impl Deref for CardSet {
 	type Target = Vec<Card>;
 
@@ -494,6 +500,7 @@ impl Hand {
 /// A standard deck of 52 playing [`Card`]`s`.
 /// For the purposes of the simulation, no duplicate cards are allowed, so a
 /// [`HashSet`] is used to contain the cards.
+#[derive(Debug, Clone)]
 pub struct Deck {
 	cards: Vec<Card>,
 	rng: ThreadRng,
@@ -576,7 +583,9 @@ impl Deck {
 	pub(crate) fn draw_certain(&mut self, cards: &[Card]) {
 		let mut card_set: HashSet<_> = self.iter().copied().collect();
 		for card in cards {
-			card_set.remove(card);
+			if !card_set.remove(card) {
+				panic!("could not find card {card:?} in deck")
+			}
 		}
 		self.cards = card_set.into_iter().collect();
 	}
@@ -585,9 +594,7 @@ impl Deck {
 #[cfg(test)]
 mod test {
 	use crate::cards::{
-		CardSet,
-		Hand,
-		PokerHand,
+		CardSet, Deck, Hand, PokerHand
 	};
 
 	fn lone_ace_of_hearts() -> Hand {
@@ -995,5 +1002,13 @@ mod test {
 			PokerHand::StraightFlush,
 			"ace to five heart flush is a straight flush"
 		);
+	}
+
+	#[test]
+	fn deck_works() {
+		let mut deck = Deck::default();
+		assert_eq!(deck.len(), 52, "there are 52 cards in a default deck");
+		deck.draw(5);
+		assert_eq!(deck.len(), 47, "there are 47 cards left in deck after drawing 5");
 	}
 }
