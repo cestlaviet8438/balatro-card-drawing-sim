@@ -2,7 +2,12 @@
 
 use std::collections::HashSet;
 
-use crate::cards::{Card, CardSet, Deck, Hand};
+use crate::cards::{
+	Card,
+	CardSet,
+	Deck,
+	Hand,
+};
 
 /// An action in a Balatro round.
 ///
@@ -116,10 +121,7 @@ impl Round {
 			"an action can only be done with cards that are being held. \
 			 received {cards:?}"
 		);
-		assert!(
-			!self.is_finished(),
-			"cannot act when round is finished"
-		);
+		assert!(!self.is_finished(), "cannot act when round is finished");
 		assert_eq!(
 			cards.len(),
 			cards.iter().collect::<HashSet<_>>().len(),
@@ -202,8 +204,14 @@ mod test {
 	use std::collections::HashSet;
 
 	use crate::{
-		cards::{CardSet, PokerHand},
-		round::{Action, Round},
+		cards::{
+			CardSet,
+			PokerHand,
+		},
+		round::{
+			Action,
+			Round,
+		},
 	};
 
 	#[test]
@@ -238,30 +246,53 @@ mod test {
 	#[should_panic]
 	fn actual_round_works() {
 		let mut round = Round::white_stake_default();
-		
+
 		round.begin();
 
-		assert_eq!(round.deck.len(), 52 - 8, "8 cards are drawn during beginning");
+		assert_eq!(
+			round.deck.len(),
+			52 - 8,
+			"8 cards are drawn during beginning"
+		);
 		assert_eq!(round.held.len(), 8, "8 cards are drawn during beginning");
 
 		round.act(Action::Discard, &round.get_first_cards(5));
 		assert_eq!(round.discard_pile.len(), 5, "5 cards are discarded");
-		assert_eq!(round.held.len(), 8, "cards are redrawn to capacity after discard action");
+		assert_eq!(
+			round.held.len(),
+			8,
+			"cards are redrawn to capacity after discard action"
+		);
 		assert_eq!(round.discard_count, 3 - 1, "2 discards are left");
 
 		round.act(Action::Play, &round.get_first_cards(4));
 		assert_eq!(round.hands[0].len(), 4, "4 cards are played");
-		assert_eq!(round.held.len(), 8, "cards are redrawn to capacity after play action");
+		assert_eq!(
+			round.held.len(),
+			8,
+			"cards are redrawn to capacity after play action"
+		);
 		assert_eq!(round.hand_count, 4 - 1, "3 hands are left");
 
 		for _ in 0..3 {
 			round.act(Action::Play, &round.get_first_cards(1));
-			assert_eq!(round.hands.last().unwrap().len(), 4, "4 cards are played");
-			assert_eq!(round.held.len(), 8, "cards are redrawn to capacity after play action");
+			assert_eq!(
+				round.hands.last().unwrap().len(),
+				4,
+				"4 cards are played"
+			);
+			assert_eq!(
+				round.held.len(),
+				8,
+				"cards are redrawn to capacity after play action"
+			);
 		}
 		assert_eq!(round.hand_count, 0, "0 hands are left");
-		assert!(round.is_finished(), "0 hands are left, so the round is finished");
-		
+		assert!(
+			round.is_finished(),
+			"0 hands are left, so the round is finished"
+		);
+
 		// to trigger panic
 		round.act(Action::Play, &round.get_first_cards(1));
 	}

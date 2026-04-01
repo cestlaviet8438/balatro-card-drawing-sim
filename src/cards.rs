@@ -152,15 +152,15 @@ pub trait CardCollection: AsRef<[Card]> + AsMut<[Card]> {
 
 	/// Returns a [`HashMap`] of ranks this collection contains, mapping each
 	/// rank in the hand to how many cards shared that rank.
-	fn rank_counts(&self) -> HashMap<Rank, usize> {
-		let mut counts = HashMap::new();
+	fn rank_frequencies(&self) -> HashMap<Rank, usize> {
+		let mut freqs = HashMap::new();
 		for card in self.as_ref() {
-			counts
+			freqs
 				.entry(card.0)
-				.and_modify(|count| *count += 1)
+				.and_modify(|freq| *freq += 1)
 				.or_insert(1);
 		}
-		counts
+		freqs
 	}
 
 	/// Returns the set of suits this collection contains.
@@ -170,15 +170,15 @@ pub trait CardCollection: AsRef<[Card]> + AsMut<[Card]> {
 
 	/// Returns a [`HashMap`] of suits this collection contains, mapping each
 	/// suit in the hand to how many cards shared that rank.
-	fn suit_counts(&self) -> HashMap<Suit, usize> {
-		let mut counts = HashMap::new();
+	fn suit_frequencies(&self) -> HashMap<Suit, usize> {
+		let mut freqs = HashMap::new();
 		for card in self.as_ref() {
-			counts
+			freqs
 				.entry(card.1)
-				.and_modify(|count| *count += 1)
+				.and_modify(|freq| *freq += 1)
 				.or_insert(1);
 		}
-		counts
+		freqs
 	}
 }
 
@@ -311,7 +311,7 @@ impl CardSet {
 	/// of the cards' suits are the same. In a [`Hand`] of 5 cards, all of the
 	/// cards' suits are the same.
 	pub fn contains_flush(&self) -> bool {
-		self.suit_counts().iter().any(|(_, count)| *count >= 5)
+		self.suit_frequencies().iter().any(|(_, freq)| *freq >= 5)
 	}
 }
 
@@ -377,35 +377,39 @@ impl Hand {
 	/// Checks if this hand contains a pair, i.e. at least two cards
 	/// share the same rank.
 	pub fn contains_pair(&self) -> bool {
-		self.rank_counts().values().any(|count| *count >= 2)
+		self.rank_frequencies().values().any(|freq| *freq >= 2)
 	}
 
 	/// Checks if this hand contains a two pair, i.e. there are at least
 	/// two distinct pairs.
 	pub fn contains_two_pair(&self) -> bool {
-		self.rank_counts()
+		self.rank_frequencies()
 			.iter()
-			.filter(|(_, count)| **count >= 2)
+			.filter(|(_, freq)| **freq >= 2)
 			.count() >= 2
 	}
 
 	/// Checks if this hand contains a three of a kind, i.e. at least
 	/// three cards share the same rank.
 	pub fn contains_three_of_a_kind(&self) -> bool {
-		self.rank_counts().values().any(|count| *count >= 3)
+		self.rank_frequencies().values().any(|freq| *freq >= 3)
 	}
 
 	/// Checks if this hand is a full house, i.e. there is a
 	/// three of a kind and pair, distinct in rank.
 	pub fn is_full_house(&self) -> bool {
-		let counts = self.rank_counts().values().copied().collect::<Vec<_>>();
-		counts.contains(&2) && counts.contains(&3)
+		let freqs = self
+			.rank_frequencies()
+			.values()
+			.copied()
+			.collect::<Vec<_>>();
+		freqs.contains(&2) && freqs.contains(&3)
 	}
 
 	/// Checks if this hand is a four of a kind, i.e. all four
 	/// suits of the same rank are present in the hand.
 	pub fn is_four_of_a_kind(&self) -> bool {
-		*self.rank_counts().values().max().unwrap() == 4
+		*self.rank_frequencies().values().max().unwrap() == 4
 	}
 
 	/// Checks if this hand is a straight flush, i.e. there is
@@ -594,7 +598,10 @@ impl Deck {
 #[cfg(test)]
 mod test {
 	use crate::cards::{
-		CardSet, Deck, Hand, PokerHand
+		CardSet,
+		Deck,
+		Hand,
+		PokerHand,
 	};
 
 	fn lone_ace_of_hearts() -> Hand {
@@ -1009,6 +1016,10 @@ mod test {
 		let mut deck = Deck::default();
 		assert_eq!(deck.len(), 52, "there are 52 cards in a default deck");
 		deck.draw(5);
-		assert_eq!(deck.len(), 47, "there are 47 cards left in deck after drawing 5");
+		assert_eq!(
+			deck.len(),
+			47,
+			"there are 47 cards left in deck after drawing 5"
+		);
 	}
 }

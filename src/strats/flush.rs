@@ -73,25 +73,25 @@ impl FinishFlushes {
 	/// This algorithm does neglect certain edge cases like having 3 hearts, 3
 	/// spades, 3 clubs having 5 diamonds still in deck, where discarding any 5
 	/// cards on hand ensures that a diamond is created.
-	fn get_target_suit(game: &Round) -> Suit {
-		let hand_suit_counts = &game.held.suit_counts();
+	fn get_target_suit(round: &Round) -> Suit {
+		let hand_suit_freqs = &round.held.suit_frequencies();
 		// look for most suits in hand.
-		let (best_held_suits, _count_in_hand) =
-			get_most_freq_entries(hand_suit_counts);
+		let (best_held_suits, _freq_in_hand) =
+			get_most_freq_entries(hand_suit_freqs);
 		if best_held_suits.len() == 1 {
 			return set_to_vec(best_held_suits)[0];
 		}
 
 		// check in deck for most plentiful suit. only suits that are already
 		// held are checked.
-		let deck_suit_counts = &game
+		let deck_suit_freqs = &round
 			.deck
-			.suit_counts()
+			.suit_frequencies()
 			.into_iter()
 			.filter(|(suit, _)| best_held_suits.contains(suit))
 			.collect::<HashMap<_, _>>();
-		let (best_suits_in_deck, _count_in_deck) =
-			get_most_freq_entries(deck_suit_counts);
+		let (best_suits_in_deck, _freq_in_deck) =
+			get_most_freq_entries(deck_suit_freqs);
 
 		match best_suits_in_deck.len() {
 			// just return one of them if there is nothing left matching the
@@ -103,7 +103,7 @@ impl FinishFlushes {
 }
 
 impl Strategy for FinishFlushes {
-	fn get_cards_to_discard(&self, _game: &Round) -> HashSet<Card> {
+	fn get_cards_to_discard(&self, round: &Round) -> HashSet<Card> {
 		todo!()
 	}
 
@@ -125,6 +125,7 @@ mod test {
 
 	use crate::{
 		cards::{
+			CardSet,
 			Deck,
 			Suit,
 		},
@@ -166,11 +167,16 @@ mod test {
 		);
 	}
 
-	fn mock_game_1() -> Round {
-		let mut round = Round::white_stake_default();
-		round
-	}
-
 	#[test]
-	fn get_target_suit_works() {}
+	fn works_with_already_flushed() {
+		let mut round = Round::white_stake_default();
+		round.draw_certain(&CardSet::from_iter([
+			"ah", "2h", "3h", "4h", "5h", "as", "ac", "ad",
+		]));
+		assert_eq!(
+			FinishFlushes::get_target_suit(&round),
+			Suit::Heart,
+			"ace to five stragiht flush already present so target is heart"
+		);
+	}
 }
