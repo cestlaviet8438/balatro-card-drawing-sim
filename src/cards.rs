@@ -1,26 +1,14 @@
 //! Mechanisms dealing with poker cards and hands.
 
 use std::{
-	collections::{
-		HashMap,
-		HashSet,
-	},
+	collections::{HashMap, HashSet},
 	error::Error,
-	ops::{
-		Deref,
-		DerefMut,
-	},
+	ops::{Deref, DerefMut},
 	str::FromStr,
 };
 
-use enum_iterator::{
-	Sequence,
-	all,
-};
-use rand::{
-	rngs::ThreadRng,
-	seq::SliceRandom,
-};
+use enum_iterator::{Sequence, all};
+use rand::{rngs::ThreadRng, seq::SliceRandom};
 
 /// The rank of a playing card.
 #[derive(
@@ -221,9 +209,9 @@ pub enum PokerHand {
 }
 
 /// A set of cards in Poker, considered as a group. It is not a [`Hand`] - the
-/// set can have as many cards as desired. For a played hand in Balatro, see
-/// [`Hand`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// set can have as many cards as desired. For a played/discarded hand in
+/// Balatro, see [`Hand`].
+#[derive(Debug, Clone)]
 pub struct CardSet(pub Vec<Card>);
 
 impl AsRef<[Card]> for CardSet {
@@ -276,6 +264,15 @@ impl<'a> FromIterator<&'a str> for CardSet {
 	}
 }
 
+impl PartialEq for CardSet {
+	fn eq(&self, other: &Self) -> bool {
+		self.0.iter().collect::<HashSet<_>>()
+			== other.0.iter().collect::<HashSet<_>>()
+	}
+}
+
+impl Eq for CardSet {}
+
 impl CardSet {
 	/// Checks if this card set contains a [`PokerHand::Straight`], i.e. at
 	/// least 5 of the cards' ranks can be arranged in strictly increasing
@@ -319,8 +316,8 @@ impl CardSet {
 ///
 /// This structure is a restrictive version of [`CardSet`] - a set of cards can
 /// have any number of cards, but this set is restricted to only having 1 to 5
-/// cards. This enables the hand to be categorized into a particular
-/// [`PokerHand`]. [`PokerHand`].
+/// unique cards. This enables the hand to be categorized into a particular
+/// [`PokerHand`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Hand(pub CardSet);
 
@@ -365,12 +362,13 @@ impl<'a> FromIterator<&'a str> for Hand {
 }
 
 impl Hand {
-	/// Constructs a new hand.
-	pub fn new(cards: CardSet) -> Self {
+	/// Constructs a new hand. Cards are deduplicated.
+	pub fn new(mut cards: CardSet) -> Self {
 		debug_assert!(
 			!cards.is_empty() && cards.len() <= 5,
 			"a hand must be between 1 or 5 cards. received: {cards:?}",
 		);
+		cards.dedup();
 		Hand(cards)
 	}
 
@@ -581,10 +579,10 @@ impl Deck {
 		}
 	}
 
-	/// Utility function to draw certain cards from the deck.
+	/// Utility function to take/remove certain cards from the deck.
 	/// The cards' order is not guaranteed after this - the [`Self::cards`]
 	/// property is turned into a [`HashSet`] and turned back into a [`Vec`].
-	pub(crate) fn draw_certain(&mut self, cards: &[Card]) {
+	pub(crate) fn take_certain(&mut self, cards: &[Card]) {
 		let mut card_set: HashSet<_> = self.iter().copied().collect();
 		for card in cards {
 			if !card_set.remove(card) {
@@ -597,11 +595,12 @@ impl Deck {
 
 #[cfg(test)]
 mod test {
+	use std::collections::HashMap;
+
+	use enum_iterator::all;
+
 	use crate::cards::{
-		CardSet,
-		Deck,
-		Hand,
-		PokerHand,
+		CardCollection, CardSet, Deck, Hand, PokerHand, Rank, Suit,
 	};
 
 	fn lone_ace_of_hearts() -> Hand {
@@ -1012,14 +1011,31 @@ mod test {
 	}
 
 	#[test]
-	fn deck_works() {
+	fn deck_draw_works() {
 		let mut deck = Deck::default();
-		assert_eq!(deck.len(), 52, "there are 52 cards in a default deck");
 		deck.draw(5);
 		assert_eq!(
 			deck.len(),
 			47,
 			"there are 47 cards left in deck after drawing 5"
+		);
+	}
+
+	#[test]
+	fn default_deck_is_standard() {
+		let default_deck = Deck::default();
+		let default_rank_freqs = all::<Rank>().map(|rank| (rank, 4)).collect();
+		let default_suit_freqs = all::<Suit>().map(|suit| (suit, 13)).collect();
+		assert_eq!(default_deck.len(), 52, "a standard deck has 52 cards");
+		assert_eq!(
+			default_deck.rank_frequencies(),
+			default_rank_freqs,
+			"a standard deck has 4 of each rank"
+		);
+		assert_eq!(
+			default_deck.suit_frequencies(),
+			default_suit_freqs,
+			"a standard deck has 13 of each suit"
 		);
 	}
 }

@@ -14,6 +14,7 @@ use crate::cards::{
 /// The two included actions are effectively equivalent in the sense that they
 /// both are actions that remove cards from the hand and draw extra cards
 /// afterwards.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Action {
 	/// Discard a number of cards held in hand, drawing more cards afterwards to
 	/// capacity.
@@ -110,7 +111,7 @@ impl Round {
 
 	/// Asserts that during an [`Action`], between 1 and 5 cards are selected
 	/// and all of them are from the hand/currently held.
-	fn action_sanity_check(&self, cards: &[Card]) {
+	fn action_sanity_check(&self, cards: &Hand) {
 		assert!(
 			!cards.is_empty() && cards.len() <= 5,
 			"an action can only be done with between 1 to 5 cards selected. \
@@ -130,7 +131,7 @@ impl Round {
 	}
 
 	/// Carry out an [`Action`] in a Balatro round.
-	pub fn act(&mut self, action: Action, cards: &[Card]) {
+	pub fn act(&mut self, action: Action, cards: &Hand) {
 		self.action_sanity_check(cards);
 		match action {
 			Action::Discard => {
@@ -169,7 +170,7 @@ impl Round {
 	/// This is used mostly to create mock hands for testing. Drawing over
 	/// the capacity is not checked.
 	pub(crate) fn draw_certain(&mut self, cards: &[Card]) {
-		self.deck.draw_certain(cards);
+		self.deck.take_certain(cards);
 		self.held.extend_from_slice(cards);
 	}
 
@@ -187,13 +188,13 @@ impl Round {
 	}
 
 	/// Discard certain cards from the hand.
-	fn discard(&mut self, cards: &[Card]) {
+	pub(crate) fn discard(&mut self, cards: &[Card]) {
 		self.remove_from_hand(cards);
 		self.discard_pile.extend(cards);
 	}
 
 	/// Play certain cards from the hand.
-	fn play(&mut self, cards: &[Card]) {
+	pub(crate) fn play(&mut self, cards: &[Card]) {
 		self.remove_from_hand(cards);
 		self.hands.push(Hand::from_iter(cards));
 	}
@@ -206,6 +207,7 @@ mod test {
 	use crate::{
 		cards::{
 			CardSet,
+			Hand,
 			PokerHand,
 		},
 		round::{
@@ -256,7 +258,7 @@ mod test {
 		);
 		assert_eq!(round.held.len(), 8, "8 cards are drawn during beginning");
 
-		round.act(Action::Discard, &round.get_first_cards(5));
+		round.act(Action::Discard, &Hand::from_iter(round.get_first_cards(5)));
 		assert_eq!(round.discard_pile.len(), 5, "5 cards are discarded");
 		assert_eq!(
 			round.held.len(),
@@ -265,7 +267,7 @@ mod test {
 		);
 		assert_eq!(round.discard_count, 3 - 1, "2 discards are left");
 
-		round.act(Action::Play, &round.get_first_cards(4));
+		round.act(Action::Play, &Hand::from_iter(round.get_first_cards(4)));
 		assert_eq!(round.hands[0].len(), 4, "4 cards are played");
 		assert_eq!(
 			round.held.len(),
@@ -275,7 +277,7 @@ mod test {
 		assert_eq!(round.hand_count, 4 - 1, "3 hands are left");
 
 		for _ in 0..3 {
-			round.act(Action::Play, &round.get_first_cards(1));
+			round.act(Action::Play, &Hand::from_iter(round.get_first_cards(1)));
 			assert_eq!(
 				round.hands.last().unwrap().len(),
 				4,
@@ -294,6 +296,6 @@ mod test {
 		);
 
 		// to trigger panic
-		round.act(Action::Play, &round.get_first_cards(1));
+		round.act(Action::Play, &Hand::from_iter(round.get_first_cards(1)));
 	}
 }

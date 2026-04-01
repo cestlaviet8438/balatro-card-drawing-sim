@@ -7,14 +7,11 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, Hash)]
-pub struct SimResults {
-	target_hand: PokerHand,
-	discards_needed: u8,
-}
+pub struct SimResults {}
 
 /// A simulation of drawing, discarding (and optionally playing) cards in
 /// Balatro.
-struct Simulation {
+pub struct Simulation {
 	/// The Balatro round this simulation is looking at.
 	round: Round,
 
@@ -30,7 +27,17 @@ impl Simulation {
 		}
 	}
 
-	pub fn run() -> SimResults {
+	/// Run the simulation, going through every step and action of the contained
+	/// strategy until the game is finished.
+	pub fn run(&mut self) -> SimResults {
+		self.round.begin();
+		while !self.round.is_finished() {
+			let (action, cards) = (
+				self.strategy.get_next_action(&self.round),
+				self.strategy.get_next_hand(&self.round),
+			);
+			self.round.act(action, &cards);
+		}
 		todo!()
 	}
 }
