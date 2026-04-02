@@ -45,16 +45,12 @@ impl Simulation {
 	}
 
 	/// Step through one action in the round.
-	pub fn act(&mut self) {
+	pub fn step(&mut self) {
 		assert!(
 			self.started,
 			"cannot act when the simulation has not started"
 		);
-		let (action, cards) = (
-			self.strategy.get_next_action(&self.round),
-			self.strategy.get_next_hand(&self.round),
-		);
-		self.round.act(action, cards);
+		self.strategy.act(&mut self.round);
 	}
 
 	/// Run the simulation, going through every step and action of the contained
@@ -62,7 +58,7 @@ impl Simulation {
 	pub fn run(&mut self) -> SimResults {
 		self.begin();
 		while !self.round.is_finished() {
-			self.act();
+			self.step();
 		}
 		SimResults {}
 	}
@@ -73,11 +69,9 @@ impl Simulation {
 		self.begin();
 		println!("{}", self.round);
 		while !self.round.is_finished() {
-			let mut _input = String::new();
 			let _ = stdout().flush();
-			stdin().read_line(&mut _input);
-
-			self.act();
+			stdin().read_line(&mut String::new());
+			self.step();
 			println!("{}\n", self.round);
 		}
 	}

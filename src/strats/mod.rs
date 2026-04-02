@@ -55,4 +55,9 @@ pub trait Strategy {
 			Action::Play => self.get_hand_to_play(round),
 		}
 	}
+
+	/// Runs the next action for the round, based on the strategy.
+	fn act(&self, round: &mut Round) {
+		round.act(self.get_next_action(round), self.get_next_hand(round));
+	}
 }
