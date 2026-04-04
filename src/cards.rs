@@ -23,6 +23,8 @@ use rand::{
 	seq::SliceRandom,
 };
 
+use crate::round::SortCardsBy;
+
 /// The rank of a playing card.
 #[derive(
 	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Sequence,
@@ -160,7 +162,7 @@ impl Suit {
 /// A playing card in Balatro/Poker, in general.
 ///
 /// For this simulation, enhancements and editions are not included.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Card(pub Rank, pub Suit);
 
 impl Display for Card {
@@ -233,9 +235,9 @@ pub trait CardCollection: AsRef<[Card]> + AsMut<[Card]> {
 
 	/// Returns a generic array-like human-readable display string of this card
 	/// collection.
-	fn get_display(&self) -> String {
-		let cards_str = self
-			.as_ref()
+	fn fmt_display(&self, sort_by: SortCardsBy) -> String {
+		let mut cards_str = sort_by
+			.get_sorted_view(self.as_ref())
 			.iter()
 			.map(|card| card.to_string())
 			.collect::<Vec<_>>()

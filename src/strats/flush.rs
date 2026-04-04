@@ -17,42 +17,22 @@ use crate::{
 	round::{
 		Action,
 		Round,
+		SortCardsBy,
 	},
 	strats::{
 		Strategy,
+		get_most_frequent_entries,
 		hits_and_misses,
 	},
 };
 
-/// A [Strategy] that looks for flushes in the given 8-card hand and tries
-/// to build one if there isn't.
-pub struct FavorFlushes;
-
-/// Utility to get the keys if their value is the maximum value in a certain
-/// [`HashMap`]. This function returns the maximum value in a set of
-/// values, and a list of keys that correspond to that maximum value.
-fn get_most_frequent_entries<K, V>(map: &HashMap<K, V>) -> (HashSet<K>, V)
-where
-	K: Clone + Copy + PartialEq + Eq + std::hash::Hash,
-	V: Clone + Copy + PartialOrd + Ord,
-{
-	debug_assert!(!map.is_empty(), "no entries to get");
-	let max = *map.values().max().unwrap();
-	(
-		map.iter()
-			.filter_map(
-				|(key, value)| {
-					if max == *value { Some(*key) } else { None }
-				},
-			)
-			.collect(),
-		max,
-	)
-}
-
 fn set_to_vec<T>(set: HashSet<T>) -> Vec<T> {
 	set.into_iter().collect()
 }
+
+/// A [`Strategy`] that looks for flushes in the given 8-card hand and tries
+/// to build one if there isn't.
+pub struct FavorFlushes;
 
 impl FavorFlushes {
 	/// Gets the [`Suit`] that the strategy will try to finish a
@@ -74,10 +54,10 @@ impl FavorFlushes {
 	/// spades, 3 clubs having 5 diamonds still in deck, where discarding any 5
 	/// cards on hand ensures that a diamond is created.
 	fn get_target_suit(held: &CardSet, deck: &Deck) -> Suit {
-		let hand_suit_freqs = held.suit_frequencies();
+		let held_suit_freqs = held.suit_frequencies();
 		// look for most frequent suits in hand.
 		let (best_held_suits, _freq_in_hand) =
-			get_most_frequent_entries(&hand_suit_freqs);
+			get_most_frequent_entries(&held_suit_freqs);
 		if best_held_suits.len() == 1 {
 			return set_to_vec(best_held_suits)[0];
 		}
@@ -143,6 +123,12 @@ impl Strategy for FavorFlushes {
 			Action::Discard
 		}
 	}
+
+	/// Returns the preferred card sorting for to finish flushes - which is
+	/// suits first.
+	fn get_card_sort_strategy(&self) -> SortCardsBy {
+		SortCardsBy::SuitsFirst
+	}
 }
 
 #[cfg(test)]
@@ -174,33 +160,6 @@ mod test {
 
 	fn standard_deck() -> Deck {
 		Deck::default()
-	}
-
-	#[test]
-	fn get_most_freq_entries_works() {
-		let data_1 = HashMap::from_iter(vec![
-			(Suit::Heart, 13),
-			(Suit::Diamond, 10),
-			(Suit::Spade, 9),
-			(Suit::Club, 8),
-		]);
-		assert_eq!(
-			get_most_frequent_entries(&data_1),
-			(HashSet::from_iter([(Suit::Heart)]), 13),
-			"13 hearts is the most common so one entry is returned"
-		);
-
-		let data_2 = HashMap::from_iter(vec![
-			(Suit::Heart, 10),
-			(Suit::Diamond, 10),
-			(Suit::Spade, 9),
-			(Suit::Club, 8),
-		]);
-		assert_eq!(
-			get_most_frequent_entries(&data_2),
-			(HashSet::from_iter([Suit::Heart, Suit::Diamond]), 10),
-			"hearts and diamonds are equally common with 10 cards"
-		);
 	}
 
 	#[test]

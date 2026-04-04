@@ -1,6 +1,7 @@
 //! Implementation of parts of a Balatro game, core for these simulations.
 
 use std::{
+	cmp::Ordering,
 	collections::HashSet,
 	fmt::{
 		Display,
@@ -38,6 +39,47 @@ impl Display for Action {
 			Action::Discard => "discard",
 			Action::Play => "play",
 		})
+	}
+}
+
+/// Ways to view sorted cards by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortCardsBy {
+	/// Sort cards by rank first, then by suits.
+	RanksFirst,
+
+	/// Sort cards by suits first, then by rank.
+	SuitsFirst,
+}
+
+impl SortCardsBy {
+	/// Compares two cards based on the sorting strategy.
+	pub fn compare_cards(&self, card_1: Card, card_2: Card) -> Ordering {
+		let rank_cmp = card_1.0.cmp(&card_2.0);
+		let suit_cmp = card_1.1.cmp(&card_2.1);
+		match self {
+			SortCardsBy::RanksFirst => {
+				if rank_cmp == Ordering::Equal {
+					suit_cmp
+				} else {
+					rank_cmp
+				}
+			},
+			SortCardsBy::SuitsFirst => {
+				if suit_cmp == Ordering::Equal {
+					rank_cmp
+				} else {
+					suit_cmp
+				}
+			},
+		}
+	}
+
+	/// Returns an ordered [`Vec`] arranging the cards in a sorted fashion.
+	pub fn get_sorted_view(&self, cards: &[Card]) -> Vec<Card> {
+		let mut cards = cards.to_vec();
+		cards.sort_by(|card_1, card_2| self.compare_cards(*card_1, *card_2));
+		cards
 	}
 }
 
@@ -80,12 +122,6 @@ pub struct Round {
 	pub(crate) history: Vec<(Action, Hand)>,
 }
 
-impl Display for Round {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", &self.fmt_status())
-	}
-}
-
 impl Round {
 	const BALATRO_HELD_CAPACITY: usize = 8;
 
@@ -123,13 +159,15 @@ impl Round {
 	}
 
 	/// Returns a printable string showing the round status.
-	pub fn fmt_status(&self) -> String {
+	pub fn fmt_status(&self, card_sort: SortCardsBy) -> String {
 		let last_hand_string =
 			if let Some((last_action, last_hand)) = self.history.last() {
+				let sorted_last_hand =
+					CardSet::from_iter(card_sort.get_sorted_view(last_hand));
 				format!(
 					"\nlast action: {}; hand: {}",
 					last_action.to_string(),
-					last_hand.get_display()
+					sorted_last_hand.fmt_display(card_sort)
 				)
 			} else {
 				"".into()
@@ -141,7 +179,7 @@ impl Round {
 			self.started,
 			self.discards_remaining,
 			self.plays_remaining,
-			self.held.get_display(),
+			self.held.fmt_display(card_sort),
 			self.held_capacity,
 			last_hand_string,
 		)
