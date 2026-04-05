@@ -14,7 +14,10 @@ use balatro_card_drawing_sim::{
 		Round,
 		Stake,
 	},
-	sim::Simulation,
+	sim::{
+		RoundData,
+		Simulation,
+	},
 	strats::{
 		Strategy,
 		flush::FavorFlushes,
@@ -31,7 +34,7 @@ fn run_n_sims<S: Strategy + Clone + 'static>(
 	n: usize,
 	stake: Stake,
 	strategy: S,
-) -> Vec<Round> {
+) -> Vec<RoundData> {
 	(0..n)
 		.map(|_| {
 			let mut sim = Simulation::new(
@@ -39,7 +42,7 @@ fn run_n_sims<S: Strategy + Clone + 'static>(
 				strategy.clone(),
 			);
 			sim.run();
-			sim.round
+			sim.get_round_data()
 		})
 		.collect()
 }

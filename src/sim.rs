@@ -6,31 +6,69 @@ use std::io::{
 	stdout,
 };
 
+use serde::{
+	Deserialize,
+	Serialize,
+};
+
 use crate::{
 	cards::{
+		CardSet,
 		Hand,
 		PokerHand,
 	},
-	round::Round,
+	round::{
+		Action,
+		Round,
+	},
 	strats::Strategy,
 };
 
-// #[derive(Debug, Clone)]
-// pub struct SimResults {
-// 	  pub original_discard_count: usize,
-// 	  pub remaining_discards: usize,
-// 	  pub played_hands: Vec<Hand>,
-// }
+/// The data relevant to a round, after having been run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoundData {
+	/// The hand's capacity.
+	pub held_capacity: usize,
 
-// impl SimResults {
-// 	/// Returns how many of a certain hand was played during this round.
-// 	pub fn get_played_hand_count(&self, hand: PokerHand) -> usize {
-// 		self.played_hands
-// 			.iter()
-// 			.filter(|play| play.is_poker_hand(hand))
-// 			.count()
-// 	}
-// }
+	/// The number of discards this round starts with.
+	pub discards_given: usize,
+
+	/// The number of discards left.
+	pub discards_remaining: usize,
+
+	/// The number of plays this round started with.
+	pub plays_given: usize,
+
+	/// The number of plays left.
+	pub plays_remaining: usize,
+
+	/// The hands that have been played.
+	pub plays: Vec<Hand>,
+
+	/// The history of actions taken during this round.
+	pub history: Vec<(CardSet, Action, Hand)>,
+}
+
+impl From<&Round> for RoundData {
+	fn from(round: &Round) -> Self {
+		RoundData {
+			held_capacity: round.held_capacity,
+			discards_given: round.discards_given,
+			discards_remaining: round.discards_remaining,
+			plays_given: round.plays_given,
+			plays_remaining: round.plays_remaining,
+			plays: round.plays.clone(),
+			history: round.history.clone(),
+		}
+	}
+}
+
+impl RoundData {
+	/// Returns the number of discards used.
+	pub fn discards_used(&self) -> usize {
+		self.discards_given - self.discards_remaining
+	}
+}
 
 /// A simulation of drawing, discarding (and optionally playing) cards in
 /// Balatro.
@@ -99,5 +137,10 @@ impl Simulation {
 			self.step();
 			self.print_round_status();
 		}
+	}
+
+	/// Gets the resulting data from a round that has been run.
+	pub fn get_round_data(&self) -> RoundData {
+		(&self.round).into()
 	}
 }

@@ -80,21 +80,18 @@ impl Stake {
 /// The simulation includes every information a Balatro player has access
 /// to: cards currently held in hand, discarded cards, and remaining cards in
 /// the deck.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Round {
 	/// Whether the round has started.
-	#[serde(skip)]
 	started: bool,
 
 	/// Cards held in the hand.
-	#[serde(skip)]
 	pub held: CardSet,
 
 	/// The hand's capacity.
 	pub held_capacity: usize,
 
 	/// The deck to draw cards from.
-	#[serde(skip)]
 	pub deck: Deck,
 
 	/// The number of discards this round starts with.
@@ -104,7 +101,6 @@ pub struct Round {
 	pub discards_remaining: usize,
 
 	/// The pile of cards that has been discarded.
-	#[serde(skip)]
 	pub discard_pile: Vec<Card>,
 
 	/// The number of plays this round started with.
@@ -117,7 +113,9 @@ pub struct Round {
 	pub plays: Vec<Hand>,
 
 	/// The history of actions taken during this round.
-	pub history: Vec<(Action, Hand)>,
+	/// The elements are as follows: held cards at the start of the turn, the
+	/// action taken, and the accompanying cards.
+	pub history: Vec<(CardSet, Action, Hand)>,
 }
 
 impl Round {
@@ -155,7 +153,9 @@ impl Round {
 	/// Returns a printable string showing the round status.
 	pub fn fmt_status(&self, card_sort: SortCardsBy) -> String {
 		let last_hand_string =
-			if let Some((last_action, last_hand)) = self.history.last() {
+			if let Some((_beginning_held, last_action, last_hand)) =
+				self.history.last()
+			{
 				let sorted_last_hand =
 					CardSet::from_iter(card_sort.get_sorted_view(last_hand));
 				format!(
@@ -216,6 +216,7 @@ impl Round {
 	/// Carry out an [`Action`] in a Balatro round.
 	pub fn act(&mut self, action: Action, cards: Hand) {
 		self.action_sanity_check(&cards);
+		let beginning_held = self.held.clone();
 		match action {
 			Action::Discard => {
 				assert_ne!(self.discards_remaining, 0, "discards have run out");
@@ -228,7 +229,7 @@ impl Round {
 				self.plays_remaining -= 1;
 			},
 		}
-		self.history.push((action, cards));
+		self.history.push((beginning_held, action, cards));
 		self.draw_to_capacity();
 	}
 

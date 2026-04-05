@@ -1,8 +1,11 @@
 //! Strategies for drawing cards, used in a simulation.
 
-use std::collections::{
-	HashMap,
-	HashSet,
+use std::{
+	collections::{
+		HashMap,
+		HashSet,
+	},
+	hash::Hash,
 };
 
 use crate::{
@@ -47,20 +50,22 @@ where
 /// values, and a list of keys that correspond to that maximum value.
 pub fn get_most_frequent_entries<K, V>(map: &HashMap<K, V>) -> (HashSet<K>, V)
 where
-	K: Clone + Copy + PartialEq + Eq + std::hash::Hash,
-	V: Clone + Copy + PartialOrd + Ord,
+	K: Eq + Hash + Clone,
+	V: Ord + Clone,
 {
 	debug_assert!(!map.is_empty(), "no entries to get");
-	let max = *map.values().max().unwrap();
+	let max = map.values().max().unwrap();
 	(
 		map.iter()
-			.filter_map(
-				|(key, value)| {
-					if max == *value { Some(*key) } else { None }
-				},
-			)
+			.filter_map(|(key, value)| {
+				if *max == *value {
+					Some(key.clone())
+				} else {
+					None
+				}
+			})
 			.collect(),
-		max,
+		max.clone(),
 	)
 }
 
