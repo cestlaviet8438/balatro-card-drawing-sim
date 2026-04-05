@@ -9,11 +9,11 @@ use crate::{
 	cards::{
 		Card,
 		Hand,
+		SortCardsBy,
 	},
 	round::{
 		Action,
 		Round,
-		SortCardsBy,
 	},
 };
 

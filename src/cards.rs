@@ -1,6 +1,7 @@
 //! Mechanisms dealing with poker cards and hands.
 
 use std::{
+	cmp::Ordering,
 	collections::{
 		HashMap,
 		HashSet,
@@ -22,12 +23,24 @@ use rand::{
 	rngs::ThreadRng,
 	seq::SliceRandom,
 };
-
-use crate::round::SortCardsBy;
+use serde::{
+	Deserialize,
+	Serialize,
+};
 
 /// The rank of a playing card.
 #[derive(
-	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Sequence,
+	Debug,
+	Clone,
+	Copy,
+	PartialEq,
+	Eq,
+	PartialOrd,
+	Ord,
+	Hash,
+	Sequence,
+	Serialize,
+	Deserialize,
 )]
 pub enum Rank {
 	Two = 2,
@@ -113,7 +126,17 @@ impl FromStr for Rank {
 /// Though ordering is implemented/derived, it is not significant in the game
 /// itself.
 #[derive(
-	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Sequence,
+	Debug,
+	Clone,
+	Copy,
+	PartialEq,
+	Eq,
+	PartialOrd,
+	Ord,
+	Hash,
+	Sequence,
+	Serialize,
+	Deserialize,
 )]
 pub enum Suit {
 	Diamond,
@@ -162,7 +185,7 @@ impl Suit {
 /// A playing card in Balatro/Poker, in general.
 ///
 /// For this simulation, enhancements and editions are not included.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Card(pub Rank, pub Suit);
 
 impl Display for Card {
@@ -192,6 +215,47 @@ impl FromStr for Card {
 impl From<&Card> for Card {
 	fn from(card: &Card) -> Self {
 		*card
+	}
+}
+
+/// Ways to view sorted cards by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortCardsBy {
+	/// Sort cards by rank first, then by suits.
+	RanksFirst,
+
+	/// Sort cards by suits first, then by rank.
+	SuitsFirst,
+}
+
+impl SortCardsBy {
+	/// Compares two cards based on the sorting strategy.
+	pub fn compare_cards(&self, card_1: Card, card_2: Card) -> Ordering {
+		let rank_cmp = card_1.0.cmp(&card_2.0);
+		let suit_cmp = card_1.1.cmp(&card_2.1);
+		match self {
+			SortCardsBy::RanksFirst => {
+				if rank_cmp == Ordering::Equal {
+					suit_cmp
+				} else {
+					rank_cmp
+				}
+			},
+			SortCardsBy::SuitsFirst => {
+				if suit_cmp == Ordering::Equal {
+					rank_cmp
+				} else {
+					suit_cmp
+				}
+			},
+		}
+	}
+
+	/// Returns an ordered [`Vec`] arranging the cards in a sorted fashion.
+	pub fn get_sorted_view(&self, cards: &[Card]) -> Vec<Card> {
+		let mut cards = cards.to_vec();
+		cards.sort_by(|card_1, card_2| self.compare_cards(*card_1, *card_2));
+		cards
 	}
 }
 
@@ -300,7 +364,7 @@ pub enum PokerHand {
 /// A set of cards in Poker, considered as a group. It is not a [`Hand`] - the
 /// set can have as many cards as desired. For a played/discarded hand in
 /// Balatro, see [`Hand`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CardSet(pub Vec<Card>);
 
 impl AsRef<[Card]> for CardSet {
@@ -407,7 +471,7 @@ impl CardSet {
 /// have any number of cards, but this set is restricted to only having 1 to 5
 /// unique cards. This enables the hand to be categorized into a particular
 /// [`PokerHand`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hand(pub CardSet);
 
 impl AsRef<[Card]> for Hand {
@@ -591,11 +655,8 @@ impl Hand {
 /// A standard deck of 52 playing [`Card`]`s`.
 /// For the purposes of the simulation, no duplicate cards are allowed, so a
 /// [`HashSet`] is used to contain the cards.
-#[derive(Debug, Clone)]
-pub struct Deck {
-	cards: Vec<Card>,
-	rng: ThreadRng,
-}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Deck(Vec<Card>);
 
 impl Default for Deck {
 	fn default() -> Self {
@@ -611,13 +672,13 @@ impl Default for Deck {
 
 impl AsRef<[Card]> for Deck {
 	fn as_ref(&self) -> &[Card] {
-		&self.cards
+		&self.0
 	}
 }
 
 impl AsMut<[Card]> for Deck {
 	fn as_mut(&mut self) -> &mut [Card] {
-		&mut self.cards
+		&mut self.0
 	}
 }
 
@@ -625,13 +686,13 @@ impl Deref for Deck {
 	type Target = [Card];
 
 	fn deref(&self) -> &Self::Target {
-		&self.cards
+		&self.0
 	}
 }
 
 impl DerefMut for Deck {
 	fn deref_mut(&mut self) -> &mut Self::Target {
-		&mut self.cards
+		&mut self.0
 	}
 }
 
@@ -648,7 +709,7 @@ impl Deck {
 		if shuffle {
 			cards.shuffle(&mut rng);
 		}
-		Self { cards, rng }
+		Self(cards)
 	}
 
 	/// Draw `n` cards from the top of the deck.
@@ -661,24 +722,24 @@ impl Deck {
 		debug_assert!(!self.is_empty(), "cannot draw from an empty deck");
 
 		if n > self.len() {
-			self.cards.drain(..).collect()
+			self.0.drain(..).collect()
 		} else {
-			let remove_slice_from = self.cards.len() - n;
-			self.cards.drain(remove_slice_from..).collect()
+			let remove_slice_from = self.0.len() - n;
+			self.0.drain(remove_slice_from..).collect()
 		}
 	}
 
 	/// Utility function to take/remove certain cards from the deck.
 	/// The cards' order is not guaranteed after this - the [`Self::cards`]
 	/// property is turned into a [`HashSet`] and turned back into a [`Vec`].
-	pub(crate) fn take_certain(&mut self, cards: &[Card]) {
+	pub fn take_certain(&mut self, cards: &[Card]) {
 		let mut card_set: HashSet<_> = self.iter().copied().collect();
 		for card in cards {
 			if !card_set.remove(card) {
 				panic!("could not find card {card:?} in deck")
 			}
 		}
-		self.cards = card_set.into_iter().collect();
+		self.0 = card_set.into_iter().collect();
 	}
 }
 

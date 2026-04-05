@@ -12,12 +12,12 @@ use crate::{
 		CardSet,
 		Deck,
 		Hand,
+		SortCardsBy,
 		Suit,
 	},
 	round::{
 		Action,
 		Round,
-		SortCardsBy,
 	},
 	strats::{
 		Strategy,
@@ -32,6 +32,7 @@ fn set_to_vec<T>(set: HashSet<T>) -> Vec<T> {
 
 /// A [`Strategy`] that looks for flushes in the given 8-card hand and tries
 /// to build one if there isn't.
+#[derive(Clone)]
 pub struct FavorFlushes;
 
 impl FavorFlushes {
@@ -148,6 +149,7 @@ mod test {
 		round::{
 			Action,
 			Round,
+			Stake,
 		},
 		strats::{
 			Strategy,
@@ -165,7 +167,7 @@ mod test {
 	#[test]
 	fn favor_flushes_works() {
 		// in this case round is manually manipulated.
-		let mut round = Round::white_stake_default();
+		let mut round = Round::default_with_stake(Stake::White);
 
 		round.draw_certain(&CardSet::from_iter([
 			"ah", "2h", "3h", "4h", "5s", "as", "ac", "ad",

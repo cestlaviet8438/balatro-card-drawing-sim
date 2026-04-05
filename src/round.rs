@@ -9,12 +9,18 @@ use std::{
 	},
 };
 
+use serde::{
+	Deserialize,
+	Serialize,
+};
+
 use crate::cards::{
 	Card,
 	CardCollection,
 	CardSet,
 	Deck,
 	Hand,
+	SortCardsBy,
 };
 
 /// An action in a Balatro round.
@@ -22,7 +28,7 @@ use crate::cards::{
 /// The two included actions are effectively equivalent in the sense that they
 /// both are actions that remove cards from the hand and draw extra cards
 /// afterwards.
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Action {
 	/// Discard a number of cards held in hand, drawing more cards afterwards to
 	/// capacity.
@@ -42,44 +48,26 @@ impl Display for Action {
 	}
 }
 
-/// Ways to view sorted cards by.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SortCardsBy {
-	/// Sort cards by rank first, then by suits.
-	RanksFirst,
+/// A stake/difficulty setting in Balatro.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Stake {
+	/// The minimum difficulty in Balatro. Starts with 3 discards, and 4
+	/// hands/plays.
+	White,
 
-	/// Sort cards by suits first, then by rank.
-	SuitsFirst,
+	/// The maximum difficulty in Balatro. Starts with 2 discards, and 4
+	/// hands/plays.
+	Gold,
 }
 
-impl SortCardsBy {
-	/// Compares two cards based on the sorting strategy.
-	pub fn compare_cards(&self, card_1: Card, card_2: Card) -> Ordering {
-		let rank_cmp = card_1.0.cmp(&card_2.0);
-		let suit_cmp = card_1.1.cmp(&card_2.1);
+impl Stake {
+	/// Returns, respectively, the number of discards and the number of plays
+	/// this difficulty starts with.
+	pub fn get_discards_and_plays(&self) -> (usize, usize) {
 		match self {
-			SortCardsBy::RanksFirst => {
-				if rank_cmp == Ordering::Equal {
-					suit_cmp
-				} else {
-					rank_cmp
-				}
-			},
-			SortCardsBy::SuitsFirst => {
-				if suit_cmp == Ordering::Equal {
-					rank_cmp
-				} else {
-					suit_cmp
-				}
-			},
+			Stake::White => (3, 4),
+			Stake::Gold => (2, 4),
 		}
-	}
-
-	/// Returns an ordered [`Vec`] arranging the cards in a sorted fashion.
-	pub fn get_sorted_view(&self, cards: &[Card]) -> Vec<Card> {
-		let mut cards = cards.to_vec();
-		cards.sort_by(|card_1, card_2| self.compare_cards(*card_1, *card_2));
-		cards
 	}
 }
 
@@ -92,34 +80,44 @@ impl SortCardsBy {
 /// The simulation includes every information a Balatro player has access
 /// to: cards currently held in hand, discarded cards, and remaining cards in
 /// the deck.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Round {
 	/// Whether the round has started.
+	#[serde(skip)]
 	started: bool,
 
 	/// Cards held in the hand.
-	pub(crate) held: CardSet,
+	#[serde(skip)]
+	pub held: CardSet,
 
 	/// The hand's capacity.
-	pub(crate) held_capacity: usize,
+	pub held_capacity: usize,
 
 	/// The deck to draw cards from.
-	pub(crate) deck: Deck,
+	#[serde(skip)]
+	pub deck: Deck,
+
+	/// The number of discards this round starts with.
+	pub discards_given: usize,
 
 	/// The number of discards left.
-	pub(crate) discards_remaining: usize,
+	pub discards_remaining: usize,
 
 	/// The pile of cards that has been discarded.
-	pub(crate) discard_pile: Vec<Card>,
+	#[serde(skip)]
+	pub discard_pile: Vec<Card>,
 
-	/// The number of hands left.
-	pub(crate) plays_remaining: usize,
+	/// The number of plays this round started with.
+	pub plays_given: usize,
+
+	/// The number of plays left.
+	pub plays_remaining: usize,
 
 	/// The hands that have been played.
-	pub(crate) plays: Vec<Hand>,
+	pub plays: Vec<Hand>,
 
 	/// The history of actions taken during this round.
-	pub(crate) history: Vec<(Action, Hand)>,
+	pub history: Vec<(Action, Hand)>,
 }
 
 impl Round {
@@ -131,31 +129,27 @@ impl Round {
 		held_capacity: usize,
 		deck: Deck,
 		discards: usize,
-		hand_count: usize,
+		plays: usize,
 	) -> Self {
 		Self {
 			started: false,
 			held: CardSet(Vec::new()),
 			held_capacity,
 			deck,
+			discards_given: discards,
 			discards_remaining: discards,
 			discard_pile: vec![],
-			plays_remaining: hand_count,
+			plays_given: plays,
+			plays_remaining: plays,
 			plays: vec![],
 			history: vec![],
 		}
 	}
 
-	/// A default simulation of Balatro card drawing on White stake (the easiest
-	/// difficulty): 4 hands and 3 discards are provided.
-	pub fn white_stake_default() -> Self {
-		Self::new(Self::BALATRO_HELD_CAPACITY, Deck::default(), 3, 4)
-	}
-
-	/// A default simulation of Balatro card drawing on Gold stake (the hardest
-	/// difficulty): 4 hands and 2 discards are provided.
-	pub fn gold_stake_default() -> Self {
-		Self::new(Self::BALATRO_HELD_CAPACITY, Deck::default(), 2, 4)
+	/// A default simulation of Balatro card drawing on a certain stake.
+	pub fn default_with_stake(stake: Stake) -> Self {
+		let (discards, plays) = stake.get_discards_and_plays();
+		Self::new(8, Deck::default(), discards, plays)
 	}
 
 	/// Returns a printable string showing the round status.
@@ -166,7 +160,7 @@ impl Round {
 					CardSet::from_iter(card_sort.get_sorted_view(last_hand));
 				format!(
 					"\nlast action: {}; hand: {}",
-					last_action.to_string(),
+					last_action,
 					sorted_last_hand.fmt_display(card_sort)
 				)
 			} else {
@@ -246,7 +240,7 @@ impl Round {
 	/// Draw the top cards in the deck to the hand's capacity.
 	/// Note that the order of the deck is not guaranteed to be preserved
 	/// between every draw or game action.
-	pub(crate) fn draw_to_capacity(&mut self) {
+	pub fn draw_to_capacity(&mut self) {
 		let draw_count = self.get_cards_to_draw_count();
 		assert_ne!(
 			draw_count, 0,
@@ -259,13 +253,13 @@ impl Round {
 	/// Draw certain cards to the hand.
 	/// This is used mostly to create mock hands for testing. Drawing over
 	/// the capacity is not checked.
-	pub(crate) fn draw_certain(&mut self, cards: &[Card]) {
+	pub fn draw_certain(&mut self, cards: &[Card]) {
 		self.deck.take_certain(cards);
 		self.held.extend_from_slice(cards);
 	}
 
 	/// Removes certain cards from the hand.
-	pub(crate) fn remove_from_hand(&mut self, cards: &[Card]) {
+	pub fn remove_from_hand(&mut self, cards: &[Card]) {
 		let held_set: HashSet<_> = self.held.iter().copied().collect();
 		self.held = held_set
 			.difference(&cards.iter().copied().collect())
@@ -273,18 +267,18 @@ impl Round {
 	}
 
 	/// Returns the first `n` cards from the hand.
-	pub(crate) fn get_first_held_cards(&self, n: usize) -> Vec<Card> {
-		self.held[0..n].iter().copied().collect()
+	pub fn get_first_held_cards(&self, n: usize) -> Vec<Card> {
+		self.held[0..n].to_vec()
 	}
 
 	/// Discard certain cards from the hand.
-	pub(crate) fn discard(&mut self, cards: &[Card]) {
+	pub fn discard(&mut self, cards: &[Card]) {
 		self.remove_from_hand(cards);
 		self.discard_pile.extend(cards);
 	}
 
 	/// Play certain cards from the hand.
-	pub(crate) fn play(&mut self, cards: &[Card]) {
+	pub fn play(&mut self, cards: &[Card]) {
 		self.remove_from_hand(cards);
 		self.plays.push(Hand::from_iter(cards));
 	}
@@ -303,12 +297,13 @@ mod test {
 		round::{
 			Action,
 			Round,
+			Stake,
 		},
 	};
 
 	#[test]
 	fn manual_round_works() {
-		let mut round = Round::white_stake_default();
+		let mut round = Round::default_with_stake(Stake::White);
 
 		let flush = vec!["ah", "2h", "3h", "4h", "6h"];
 		let other_cards = vec!["7s", "8s", "9s"];
@@ -336,7 +331,7 @@ mod test {
 
 	#[test]
 	fn actual_round_works() {
-		let mut round = Round::white_stake_default();
+		let mut round = Round::default_with_stake(Stake::White);
 
 		round.begin();
 
@@ -390,7 +385,7 @@ mod test {
 	#[test]
 	#[should_panic]
 	fn cannot_play_when_finished() {
-		let mut round = Round::white_stake_default();
+		let mut round = Round::default_with_stake(Stake::White);
 		round.begin();
 		round.plays_remaining = 0;
 		round.act(Action::Play, Hand::from_iter(round.get_first_held_cards(1)));

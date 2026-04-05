@@ -17,9 +17,9 @@ use crate::{
 
 // #[derive(Debug, Clone)]
 // pub struct SimResults {
-// 	  pub(crate) original_discard_count: usize,
-// 	  pub(crate) remaining_discards: usize,
-// 	  pub(crate) played_hands: Vec<Hand>,
+// 	  pub original_discard_count: usize,
+// 	  pub remaining_discards: usize,
+// 	  pub played_hands: Vec<Hand>,
 // }
 
 // impl SimResults {
@@ -36,10 +36,10 @@ use crate::{
 /// Balatro.
 pub struct Simulation {
 	/// Whether the simulation has started.
-	pub(crate) started: bool,
+	pub started: bool,
 
 	/// The Balatro round this simulation is looking at.
-	pub(crate) round: Round,
+	pub round: Round,
 
 	/// The drawing & discarding strategy this simulation is using.
 	strategy: Box<dyn Strategy>,
