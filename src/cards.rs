@@ -285,7 +285,7 @@ pub trait CardCollection: AsRef<[Card]> + AsMut<[Card]> {
 	}
 
 	/// Returns a [`HashMap`] of suits this collection contains, mapping each
-	/// suit in the hand to how many cards shared that rank.
+	/// suit in the hand to how many cards shared that suit.
 	fn suit_frequencies(&self) -> HashMap<Suit, usize> {
 		let mut freqs = HashMap::new();
 		for card in self.as_ref() {
