@@ -6,6 +6,7 @@ use std::io::{
 	stdout,
 };
 
+use derive_new::new;
 use serde::{
 	Deserialize,
 	Serialize,
@@ -20,13 +21,19 @@ use crate::{
 	round::{
 		Action,
 		Round,
+		Stake,
 	},
 	strats::Strategy,
 };
 
 /// The data relevant to a round, after having been run.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, new)]
 pub struct RoundData {
+	/// ID for the round.
+	/// The ID is a character representing the stake, followed by a string of
+	/// numbers.
+	pub id: String,
+
 	/// The hand's capacity.
 	pub held_capacity: usize,
 
@@ -49,21 +56,25 @@ pub struct RoundData {
 	pub history: Vec<(CardSet, Action, Hand)>,
 }
 
-impl From<&Round> for RoundData {
-	fn from(round: &Round) -> Self {
-		RoundData {
-			held_capacity: round.held_capacity,
-			discards_given: round.discards_given,
-			discards_remaining: round.discards_remaining,
-			plays_given: round.plays_given,
-			plays_remaining: round.plays_remaining,
-			plays: round.plays.clone(),
-			history: round.history.clone(),
-		}
-	}
-}
-
 impl RoundData {
+	/// Constructs a new [`RoundData`] with the given data.
+	pub fn with_round_and_id(round: &Round, stake: Stake, id: u64) -> Self {
+		let id_prefix = match stake {
+			Stake::White => "W",
+			Stake::Gold => "G",
+		};
+		Self::new(
+			format!("{id_prefix}{id}"),
+			round.held_capacity,
+			round.discards_given,
+			round.discards_remaining,
+			round.plays_given,
+			round.plays_remaining,
+			round.plays.clone(),
+			round.history.clone(),
+		)
+	}
+
 	/// Returns the number of discards used.
 	pub fn discards_used(&self) -> usize {
 		self.discards_given - self.discards_remaining
@@ -139,8 +150,9 @@ impl Simulation {
 		}
 	}
 
-	/// Gets the resulting data from a round that has been run.
-	pub fn get_round_data(&self) -> RoundData {
-		(&self.round).into()
+	/// Gets the resulting data from a round that has been run, supplemented by
+	/// a [`Stake`] and an ID.
+	pub fn get_round_data(&self, stake: Stake, id: u64) -> RoundData {
+		RoundData::with_round_and_id(&self.round, stake, id)
 	}
 }
