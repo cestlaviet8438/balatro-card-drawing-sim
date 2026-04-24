@@ -69,11 +69,12 @@ fn produce_data_for_stake<S: Strategy + Clone + 'static>(
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-	const TRIALS: u64 = 1_000_000;
+	let args: Vec<String> = std::env::args().collect();
+	let trials = args.last().unwrap().parse()?;
 
 	println!("producing data for white stake...");
 	produce_data_for_stake(
-		TRIALS,
+		trials,
 		Stake::White,
 		FavorFlushes,
 		"white_stake_data.json".into(),
@@ -81,7 +82,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 	println!("producing data for gold stake...");
 	produce_data_for_stake(
-		TRIALS,
+		trials,
 		Stake::Gold,
 		FavorFlushes,
 		"gold_stake_data.json".into(),
