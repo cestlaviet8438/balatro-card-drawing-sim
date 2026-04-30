@@ -5,6 +5,7 @@ use std::collections::{
 	HashSet,
 };
 
+use enum_iterator::all;
 use malachite::{
 	Natural,
 	Rational,
@@ -31,6 +32,7 @@ use crate::{
 	},
 	strats::{
 		Strategy,
+		StrategyData,
 		get_most_frequent_entries,
 		hits_and_misses,
 		n_choose_r,
@@ -40,6 +42,8 @@ use crate::{
 fn set_to_vec<T>(set: HashSet<T>) -> Vec<T> {
 	set.into_iter().collect()
 }
+
+const SIZE_OF_FLUSH: usize = 5; // no magic numbers allowed in this house
 
 /// A [`Strategy`] that looks for flushes in the given 8-card hand and tries
 /// to build one if there isn't.
@@ -51,7 +55,9 @@ impl FavorFlushes {
 	/// [`PokerHand::Flush`] for. Essentially, this function returns which suit
 	/// is the most plentiful in the current held cards and in the available
 	/// deck. The procedure for selection is follows:
-	/// - Record the most plentiful suits currently held in hand.
+	/// - If there already is a Flush in hand,
+	/// - Record the suits currently held in hand. Only the suits that have
+	///   enough cards in the deck to make a Flush with is considered.
 	/// - Check in the deck to see which held suits is the most plentiful there.
 	///   For example, holding 4 hearts and 4 diamonds in hand, if there are 9
 	///   hearts left in deck but 8 or less diamonds, hearts is chosen as the
@@ -62,48 +68,68 @@ impl FavorFlushes {
 	///   happened to come first when looking through the hand/deck will be
 	///   returned.
 	///
-	/// This algorithm does neglect certain edge cases like having 3 hearts, 3
-	/// spades, 3 clubs having 5 diamonds still in deck, where discarding any 5
-	/// cards on hand ensures that a diamond is created. Such a case is deemed
-	/// to be an unreachable edge case as this simulation is only concerned with
-	/// the most basic of setups (no Jokers, so nothing including Jokers like
-	/// Merry Andy).
+	/// This algorithm is geared towards the first few turns of a round. Some
+	/// edge cases are neglected, for example: holding 4 hearts, 1 clubs, 1
+	/// spades, and 2 diamonds while there is 1 heart card and 10 diamond
+	/// cards. Here it is clearly better to draw the diamonds, but this
+	/// function will nonetheless evaluate to hearts for simplicity - held
+	/// cards take priority over everything else.
 	fn get_target_suit(held: &CardSet, deck: &Deck) -> Suit {
+		// check in held card for most frequent suit.
 		let held_suit_freqs = held.suit_frequencies();
-		// look for most frequent suits in hand.
 		let (best_held_suits, _freq_in_hand) =
 			get_most_frequent_entries(&held_suit_freqs);
+		if held.contains_flush() {
+			return set_to_vec(best_held_suits)[0];
+		}
+
+		let deck_suit_freqs = deck.suit_frequencies();
+		let eligible_suits_and_freqs: HashMap<_, _> = all::<Suit>()
+			.filter_map(|suit| {
+				let total_frequency = held_suit_freqs.get(&suit).unwrap_or(&0)
+					+ deck_suit_freqs.get(&suit).unwrap_or(&0);
+				if total_frequency >= SIZE_OF_FLUSH {
+					Some((suit, total_frequency))
+				} else {
+					None
+				}
+			})
+			.collect();
+
+		match eligible_suits_and_freqs.len() {
+			0 => return held.0[0].1,
+			1 => return *eligible_suits_and_freqs.keys().next().unwrap(),
+			_ => {},
+		};
+
 		if best_held_suits.len() == 1 {
 			return set_to_vec(best_held_suits)[0];
 		}
 
-		// check in deck for most frequent suit. only suits that are already
-		// held are checked.
-		let deck_suit_freqs = deck
-			.suit_frequencies()
+		// restrict deck to only suits that appear in `best_held_suits`.
+		let held_suit_freqs_in_deck: HashMap<_, _> = deck_suit_freqs
 			.into_iter()
 			.filter(|(suit, _)| best_held_suits.contains(suit))
-			.collect::<HashMap<_, _>>();
+			.collect();
 		let (best_suits_in_deck, _freq_in_deck) =
-			get_most_frequent_entries(&deck_suit_freqs);
-
-		match best_suits_in_deck.len() {
-			// just return one of them if there is nothing left matching the
-			// hand.
-			0 => set_to_vec(best_held_suits)[0],
-			1.. => set_to_vec(best_suits_in_deck)[0],
-		}
+			get_most_frequent_entries(&held_suit_freqs_in_deck);
+		set_to_vec(best_suits_in_deck)[0]
 	}
 
 	fn _suited_drawing_sanity_check(
-		draw_count: u64,
-		suited_count: u64,
+		draw_count: usize,
+		suited_count: usize,
+		target_suit: Suit,
 		deck: &Deck,
 	) {
+		let deck_len = deck.len_u64();
+		let deck_suited_cards_count = deck.suited_cards_count(target_suit);
+
 		debug_assert_ne!(draw_count, 0, "cannot draw 0 cards");
 		debug_assert!(
 			suited_count <= draw_count,
-			"cannot demand more suited cards than are drawing"
+			"cannot demand more suited cards than are drawing: {suited_count} \
+			 was not < {draw_count}"
 		);
 		debug_assert!(
 			draw_count as usize <= MAX_CARDS_SELECTABLE,
@@ -111,33 +137,42 @@ impl FavorFlushes {
 		);
 		debug_assert!(!deck.is_empty(), "cannot draw from an empty deck");
 		debug_assert!(
-			draw_count <= deck.len_u64(),
-			"cannot draw more than available"
+			draw_count <= deck_len as usize,
+			"cannot draw more than available: tried to draw {draw_count} from \
+			 a deck of {deck_len}",
 		);
+		debug_assert!(
+			suited_count <= deck.suited_cards_count(target_suit),
+			"cannot draw more suited cards than available: tried to draw \
+			 {suited_count} suited cards from a deck with \
+			 {deck_suited_cards_count} suited cards remaining."
+		)
 	}
 
 	/// Returns, out of those that can be constructed from the given [`Deck`],
 	/// the number of [`Card`] sets of size `d` that contain **exactly** `s`
 	/// cards of the given [`Suit`].
 	fn _card_combinations_with_exact_suit_count(
-		d: u64,
-		s: u64,
+		d: usize,
+		s: usize,
 		target_suit: Suit,
 		deck: &Deck,
 	) -> Natural {
-		Self::_suited_drawing_sanity_check(d, s, deck);
+		Self::_suited_drawing_sanity_check(d, s, target_suit, deck);
 
-		let deck_suit_freqs = deck.suit_frequencies();
-		let deck_target_suit_count =
-			*deck_suit_freqs.get(&target_suit).unwrap();
+		let deck_target_suit_count = deck.suited_cards_count(target_suit);
 		let deck_non_target_suit_count = deck.len() - deck_target_suit_count;
 
 		// draw set will be composed of `s` cards with the target suit and `d -
 		// s` cards with other suits.
-		let suited_combs =
-			n_choose_r(deck_target_suit_count.try_into().unwrap(), s);
-		let unsuited_combs =
-			n_choose_r(deck_non_target_suit_count.try_into().unwrap(), d - s);
+		let suited_combs = n_choose_r(
+			deck_target_suit_count.try_into().unwrap(),
+			s.try_into().unwrap(),
+		);
+		let unsuited_combs = n_choose_r(
+			deck_non_target_suit_count.try_into().unwrap(),
+			(d - s).try_into().unwrap(),
+		);
 		suited_combs * unsuited_combs
 	}
 
@@ -153,12 +188,15 @@ impl FavorFlushes {
 	/// suited cards, counting everything with >= `s` suited cards is sure to
 	/// give the exact number.
 	fn _card_combinations_with_at_least_suit_count(
-		d: u64,
-		s: u64,
+		d: usize,
+		s: usize,
 		target_suit: Suit,
 		deck: &Deck,
 	) -> Natural {
-		(s..=d)
+		// prevent overdrawing
+		let deck_suited_cards_count = deck.suited_cards_count(target_suit);
+		let max_suited_draw = deck_suited_cards_count.min(d);
+		(s..=max_suited_draw)
 			.map(|suited_count| {
 				Self::_card_combinations_with_exact_suit_count(
 					d,
@@ -173,8 +211,8 @@ impl FavorFlushes {
 	/// Returns the probability that a set of `d` [`Card`]s, drawn from a given
 	/// [`Deck`]s, will contain **exactly** `s` cards with the given [`Suit`].
 	fn _probability_to_draw_exactly_n_suited(
-		d: u64,
-		s: u64,
+		d: usize,
+		s: usize,
 		target_suit: Suit,
 		deck: &Deck,
 	) -> Rational {
@@ -185,7 +223,7 @@ impl FavorFlushes {
 				target_suit,
 				deck,
 			),
-			n_choose_r(deck.len_u64(), d),
+			n_choose_r(deck.len_u64(), d.try_into().unwrap()),
 		)
 	}
 
@@ -203,8 +241,8 @@ impl FavorFlushes {
 	///
 	/// I don't know if I'll like combinatorics after this.
 	fn _probability_to_draw_at_least_n_suited(
-		draw_count: u64,
-		suited_count: u64,
+		draw_count: usize,
+		suited_count: usize,
 		target_suit: Suit,
 		deck: &Deck,
 	) -> Rational {
@@ -215,7 +253,7 @@ impl FavorFlushes {
 				target_suit,
 				deck,
 			),
-			n_choose_r(deck.len_u64(), draw_count),
+			n_choose_r(deck.len_u64(), draw_count.try_into().unwrap()),
 		)
 	}
 
@@ -243,10 +281,8 @@ impl FavorFlushes {
 			return None;
 		}
 
-		const SIZE_OF_FLUSH: usize = 5; // no magic numbers allowed in this house
 		let target_suit = Self::get_target_suit(held, deck);
-		let held_suit_freqs = held.suit_frequencies();
-		let held_target_suit_count = held_suit_freqs.get(&target_suit).unwrap();
+		let held_target_suit_count = held.suited_cards_count(target_suit);
 		let cards_to_draw =
 			(held.len() - held_target_suit_count).min(MAX_CARDS_SELECTABLE);
 		let suited_cards_to_draw = SIZE_OF_FLUSH - held_target_suit_count;
@@ -260,16 +296,7 @@ impl FavorFlushes {
 	}
 }
 
-/// Strategy data for [`FavorFlushes`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FavorFlushesData {
-	/// Probability for this strategy to complete a Flush.
-	probability_to_complete_flush: Option<Rational>,
-}
-
 impl Strategy for FavorFlushes {
-	type StrategyData = FavorFlushesData;
-
 	/// Returns the cards to discard. The first five cards (or less) held in
 	/// hand that are not the target suit chosen by [`Self::get_target_suit`]
 	/// are returned.
@@ -326,9 +353,10 @@ impl Strategy for FavorFlushes {
 	}
 
 	/// Returns the strategy data for this struct.
-	fn get_strategy_data(&self, round: &Round) -> Self::StrategyData {
-		FavorFlushesData {
-			probability_to_complete_flush: todo!(),
+	fn get_strategy_data(&self, round: &Round) -> StrategyData {
+		StrategyData {
+			probability_to_complete_hand: self
+				.probability_to_complete_flush(round),
 		}
 	}
 }
@@ -340,6 +368,7 @@ mod test {
 		HashSet,
 	};
 
+	use enum_iterator::all;
 	use malachite::{
 		Rational,
 		base::num::conversion::traits::ToSci,
@@ -347,9 +376,11 @@ mod test {
 
 	use crate::{
 		cards::{
+			Card,
 			CardSet,
 			Deck,
 			Hand,
+			Rank,
 			Suit,
 		},
 		round::{
@@ -493,7 +524,7 @@ mod test {
 		assert_eq!(
 			FavorFlushes.get_next_hand(&round),
 			Hand::from_iter(["5s", "as", "ac", "ad"]),
-			"discarding non-heart throw cards"
+			"discarding non-heart cards"
 		);
 
 		// make the strategy play throw cards instead of discard them
@@ -539,6 +570,51 @@ mod test {
 			FavorFlushes.get_next_hand(&round),
 			Hand::from_iter(["as", "2s", "3s", "4s", "5s"]),
 			"playing spade straight flush in hand"
+		);
+	}
+
+	#[test]
+	fn favor_flushes_not_enough_cards_edge_case() {
+		// deck skewed heavily towards diamonds but still having 5 hearts
+		let deck = Deck::from_iter([
+			"ah", "2h", "3h", "as", "2s", "3s", "ac", "2c", "ad", "2d", "3d",
+			"4d", "5d",
+		]);
+		let mut round = Round::new(8, deck, 1, 1);
+
+		round.draw_certain(&CardSet::from_iter([
+			"ah", "2h", "3h", "as", "2s", "3s", "ac", "2c",
+		]));
+		assert_eq!(
+			FavorFlushes::get_target_suit(&round.held, &round.deck),
+			Suit::Diamond,
+			"none of the suits other than diamonds are enough for a flush"
+		);
+	}
+
+	#[test]
+	fn favor_flushes_strategy_plentiful_in_deck_edge_case() {
+		// deck skewed heavily towards diamonds but still having 5 hearts
+		let deck = Deck::from_iter(
+			[
+				CardSet::from_iter(["ah", "2h", "3h", "4h", "5h", "as", "ac"])
+					.to_vec(),
+				all::<Rank>()
+					.map(|rank| Card(rank, Suit::Diamond))
+					.collect(),
+			]
+			.concat(),
+		);
+		let mut round = Round::new(8, deck, 1, 1);
+
+		round.draw_certain(&CardSet::from_iter([
+			"ah", "2h", "3h", "4h", "as", "ac", "ad", "2d",
+		]));
+		assert_eq!(
+			FavorFlushes::get_target_suit(&round.held, &round.deck),
+			Suit::Heart,
+			"even though diamonds are more plentiful overall, hearts are more \
+			 plentiful in hand"
 		);
 	}
 }

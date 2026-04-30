@@ -5,13 +5,22 @@ use std::{
 		HashMap,
 		HashSet,
 	},
+	fmt::Display,
 	hash::Hash,
 };
 
 use cached::proc_macro::cached;
 use malachite::{
 	Natural,
-	base::num::arithmetic::traits::Factorial,
+	Rational,
+	base::num::{
+		arithmetic::traits::Factorial,
+		conversion::traits::ToSci,
+	},
+};
+use serde::{
+	Deserialize,
+	Serialize,
 };
 
 use crate::{
@@ -40,7 +49,10 @@ pub fn factorial(n: u64) -> Natural {
 /// This function is a translation of the formula `nCr = n! / r!(n-r)!`.
 #[cached]
 pub fn n_choose_r(n: u64, r: u64) -> Natural {
-	debug_assert!(r <= n);
+	debug_assert!(
+		r <= n,
+		"cannot choose more than available: {r} was not <= {n}"
+	);
 	match (n, r) {
 		(0, _) => 0u64.into(),
 		(_, 0) => 1u64.into(),
@@ -96,13 +108,32 @@ where
 	)
 }
 
+/// Data associated with the [`Strategy`]. This struct may contain
+/// anything, for example valuable insights the strategy is making
+/// based on the state of the round.
+///
+/// p.s. i gave up on trying to make this generic lmao
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StrategyData {
+	/// The probability that a [`crate::cards::PokerHand`]-oriented
+	/// strategy can complete the hand with the next [`Action`].
+	probability_to_complete_hand: Option<Rational>,
+}
+
+impl Display for StrategyData {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "probability to complete hand: {}", match &self
+			.probability_to_complete_hand
+		{
+			Some(ratio) => ratio.to_sci().to_string(),
+			None => "n/a".into(),
+		})
+	}
+}
+
 /// A strategy to simulate a player, making decisions on the cards in their
 /// hand.
 pub trait Strategy {
-	/// Data associated with the strategy, to be processed and included in
-	/// simulation data.
-	type StrategyData;
-
 	/// Returns which cards to discard.
 	fn get_hand_to_discard(&self, round: &Round) -> Hand;
 
@@ -126,7 +157,7 @@ pub trait Strategy {
 	}
 
 	/// Obtains the simulation-relevant data for this strategy.
-	fn get_strategy_data(&self, round: &Round) -> Self::StrategyData;
+	fn get_strategy_data(&self, round: &Round) -> StrategyData;
 
 	/// Gets the preferred method to sort cards by when formatting and printing.
 	/// This function is run for every turn in a round.

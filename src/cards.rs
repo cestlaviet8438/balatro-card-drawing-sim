@@ -28,6 +28,8 @@ use serde::{
 	Serialize,
 };
 
+use crate::round::MAX_CARDS_SELECTABLE;
+
 /// The rank of a playing card.
 #[derive(
 	Debug,
@@ -304,6 +306,11 @@ pub trait CardCollection: AsRef<[Card]> + AsMut<[Card]> {
 		freqs
 	}
 
+	/// Counts how many cards are a given [`Suit`] in this collection.
+	fn suited_cards_count(&self, suit: Suit) -> usize {
+		*self.suit_frequencies().get(&suit).unwrap_or(&0)
+	}
+
 	/// Returns a generic array-like human-readable display string of this card
 	/// collection.
 	fn fmt_display(&self, sort_by: SortCardsBy) -> String {
@@ -525,8 +532,9 @@ impl Hand {
 	/// Constructs a new hand. Cards are deduplicated.
 	pub fn new(mut cards: CardSet) -> Self {
 		debug_assert!(
-			!cards.is_empty() && cards.len() <= 5,
-			"a hand must be between 1 or 5 cards. received: {cards:?}",
+			!cards.is_empty() && cards.len() <= MAX_CARDS_SELECTABLE,
+			"a hand must be between 1 or {MAX_CARDS_SELECTABLE} cards. \
+			 received: {cards:?}",
 		);
 		cards.dedup();
 		Hand(cards)
@@ -739,7 +747,7 @@ impl Deck {
 	///
 	/// Note that if there are not enough cards left, the deck will simply
 	/// be exhausted and all remaining cards are drawn. The method will,
-	/// however, panic if trying to draw from an empty deck.
+	/// however, panic if the deck is empty.
 	pub fn draw(&mut self, n: usize) -> Vec<Card> {
 		debug_assert!(n > 0, "why are you drawing 0 cards");
 		debug_assert!(!self.is_empty(), "cannot draw from an empty deck");

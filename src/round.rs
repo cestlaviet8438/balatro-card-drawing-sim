@@ -50,6 +50,19 @@ impl Display for Action {
 	}
 }
 
+/// The data involved in an action.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionData {
+	/// The cards held in the hand during the start of the turn.
+	pub held: CardSet,
+
+	/// The action performed.
+	pub action: Action,
+
+	/// The cards used during the action, called a "hand".
+	pub hand: Hand,
+}
+
 /// A stake/difficulty setting in Balatro.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Stake {
@@ -118,7 +131,7 @@ pub struct Round {
 	/// The history of actions taken during this round.
 	/// The elements are as follows: held cards at the start of the turn, the
 	/// action taken, and the accompanying cards.
-	pub history: Vec<(CardSet, Action, Hand)>,
+	pub history: Vec<ActionData>,
 }
 
 impl Round {
@@ -155,20 +168,18 @@ impl Round {
 
 	/// Returns a printable string showing the round status.
 	pub fn fmt_status(&self, card_sort: SortCardsBy) -> String {
-		let last_hand_string =
-			if let Some((_beginning_held, last_action, last_hand)) =
-				self.history.last()
-			{
-				let sorted_last_hand =
-					CardSet::from_iter(card_sort.get_sorted_view(last_hand));
-				format!(
-					"\nlast action: {}; hand: {}",
-					last_action,
-					sorted_last_hand.fmt_display(card_sort)
-				)
-			} else {
-				"".into()
-			};
+		let last_hand_string = if let Some(action_data) = self.history.last() {
+			let sorted_last_hand = CardSet::from_iter(
+				card_sort.get_sorted_view(&action_data.hand),
+			);
+			format!(
+				"\nlast action: {}; hand: {}",
+				action_data.action,
+				sorted_last_hand.fmt_display(card_sort)
+			)
+		} else {
+			"".into()
+		};
 
 		format!(
 			"started: {}\ndiscards remaining: {}\nplays remaining: {}\nheld: \
@@ -232,7 +243,11 @@ impl Round {
 				self.plays_remaining -= 1;
 			},
 		}
-		self.history.push((beginning_held, action, cards));
+		self.history.push(ActionData {
+			held: beginning_held,
+			action,
+			hand: cards,
+		});
 		self.draw_to_capacity();
 	}
 

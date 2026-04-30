@@ -11,7 +11,7 @@ use std::{
 	path::PathBuf,
 };
 
-use balatro_card_drawing_sim::sim::RoundData;
+use balatro_card_drawing_sim::sim::SimulationData;
 use json::{
 	JsonValue,
 	array,
@@ -79,7 +79,7 @@ impl Part {
 
 /// Returns the number of flushes played during the round.
 /// Note that straight flushes are not excluded.
-fn get_flushes_played(round: &RoundData) -> usize {
+fn get_flushes_played(round: &SimulationData) -> usize {
 	round
 		.plays
 		.iter()
@@ -89,7 +89,7 @@ fn get_flushes_played(round: &RoundData) -> usize {
 
 /// Returns the number of discards and throwaway hands ("throws") used during
 /// the round.
-fn get_throws_used(round: &RoundData) -> usize {
+fn get_throws_used(round: &SimulationData) -> usize {
 	// 🤜
 	let throws = round
 		.plays
@@ -103,12 +103,12 @@ fn get_throws_used(round: &RoundData) -> usize {
 /// The number returned is how many actions was done until the first time held
 /// cards contained a flush - if a flush was never acquired, [`None`] is
 /// returned.
-fn get_actions_to_first_flush(round: &RoundData) -> Option<usize> {
+fn get_actions_to_first_flush(round: &SimulationData) -> Option<usize> {
 	round
-		.history
+		.action_history
 		.iter()
 		.enumerate()
-		.find(|(_, (held, ..))| held.contains_flush())
+		.find(|(_, action_data)| action_data.held.contains_flush())
 		.map(|(index, _)| index)
 }
 
@@ -116,11 +116,11 @@ fn get_actions_to_first_flush(round: &RoundData) -> Option<usize> {
 /// complete set of rounds played. The returned [`HashMap`] maps a certain value
 /// of the metric to how many rounds shared that value.
 fn metric_frequencies<F, M>(
-	rounds: &[RoundData],
+	rounds: &[SimulationData],
 	get_metric: F,
 ) -> HashMap<M, Part>
 where
-	F: Fn(&RoundData) -> M,
+	F: Fn(&SimulationData) -> M,
 	M: Eq + Hash + Clone,
 {
 	get_value_frequencies(
@@ -155,7 +155,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 		.create(true)
 		.open(analysis_file_path)?;
 
-	let rounds: Vec<RoundData> = serde_json::from_str(&data_str)?;
+	let rounds: Vec<SimulationData> = serde_json::from_str(&data_str)?;
 	let flushes_played = metric_frequencies(&rounds, get_flushes_played);
 	let throws_used = metric_frequencies(&rounds, get_throws_used);
 	let actions_to_first_flush: HashMap<_, _> =

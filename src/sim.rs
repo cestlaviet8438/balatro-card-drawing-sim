@@ -20,15 +20,21 @@ use crate::{
 	},
 	round::{
 		Action,
+		ActionData,
 		Round,
 		Stake,
 	},
-	strats::Strategy,
+	strats::{
+		Strategy,
+		StrategyData,
+	},
 };
 
-/// The data relevant to a round, after having been run.
+/// The data created by a simulation.
+/// This contains everything relevant to a [`Round`] after having been run with
+/// a certain [`Strategy`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RoundData {
+pub struct SimulationData {
 	/// ID for the round.
 	/// The ID is a character representing the stake, followed by a string of
 	/// numbers.
@@ -53,12 +59,28 @@ pub struct RoundData {
 	pub plays: Vec<Hand>,
 
 	/// The history of actions taken during this round.
-	pub history: Vec<(CardSet, Action, Hand)>,
+	pub action_history: Vec<ActionData>,
+
+	/// A history for strategy data.
+	/// This history begins before any actions have been taken, and ends at the
+	/// last round.
+	pub strategy_history: Vec<StrategyData>,
 }
 
-impl RoundData {
+impl SimulationData {
 	/// Constructs a new [`RoundData`] with the given data.
-	pub fn with_round_and_id(round: &Round, stake: Stake, id: u64) -> Self {
+	pub fn new(
+		round: &Round,
+		strategy_history: Vec<StrategyData>,
+		stake: Stake,
+		id: u64,
+	) -> Self {
+		debug_assert_eq!(
+			round.history.len(),
+			strategy_history.len(),
+			"there must be data every for every action"
+		);
+
 		let id_prefix = match stake {
 			Stake::White => "W",
 			Stake::Gold => "G",
@@ -71,7 +93,8 @@ impl RoundData {
 			plays_given: round.plays_given,
 			plays_remaining: round.plays_remaining,
 			plays: round.plays.clone(),
-			history: round.history.clone(),
+			action_history: round.history.clone(),
+			strategy_history,
 		}
 	}
 
@@ -83,7 +106,7 @@ impl RoundData {
 
 /// A simulation of drawing, discarding (and optionally playing) cards in
 /// Balatro.
-pub struct Simulation<D> {
+pub struct Simulation {
 	/// Whether the simulation has started.
 	pub started: bool,
 
@@ -91,19 +114,33 @@ pub struct Simulation<D> {
 	pub round: Round,
 
 	/// The drawing & discarding strategy this simulation is using.
-	strategy: Box<dyn Strategy<StrategyData = D>>,
+	strategy: Box<dyn Strategy>,
+
+	/// The data this strategy outputs every turn.
+	strategy_history: Vec<StrategyData>,
 }
 
-impl<D> Simulation<D> {
-	pub fn new<S: Strategy<StrategyData = D> + 'static>(
-		round: Round,
-		strategy: S,
-	) -> Self {
+impl Simulation {
+	/// Constructs a new [`Simulation`].
+	pub fn new<St>(round: Round, strategy: St) -> Self
+	where
+		St: Strategy + 'static,
+	{
 		Self {
 			started: false,
 			round,
 			strategy: Box::new(strategy),
+			strategy_history: vec![],
 		}
+	}
+
+	/// Add one item to [`Self::strategy_history`].
+	/// Essentially, this is asking the strategy to make an assessment
+	/// and generate some data related to the initial state of the round
+	/// (after it has begun).
+	pub fn assess_round(&mut self) {
+		self.strategy_history
+			.push(self.strategy.get_strategy_data(&self.round));
 	}
 
 	/// Begin the simulation. This is only used when intending to step through
@@ -111,6 +148,7 @@ impl<D> Simulation<D> {
 	pub fn begin(&mut self) {
 		self.round.begin();
 		self.started = true;
+		self.assess_round();
 	}
 
 	/// Step through one action in the round.
@@ -120,6 +158,9 @@ impl<D> Simulation<D> {
 			"cannot act when the simulation has not started"
 		);
 		self.strategy.act(&mut self.round);
+		if !self.round.is_finished() {
+			self.assess_round();
+		}
 	}
 
 	/// Run the simulation, going through every step and action of the contained
@@ -134,9 +175,13 @@ impl<D> Simulation<D> {
 	/// Prints the status of the round.
 	fn print_round_status(&self) {
 		println!(
-			"{}",
+			"{}\n{}",
 			self.round
-				.fmt_status(self.strategy.get_card_sort_strategy())
+				.fmt_status(self.strategy.get_card_sort_strategy()),
+			match self.round.is_finished() {
+				false => format!("{}", self.strategy_history.last().unwrap()),
+				true => "".into(),
+			},
 		);
 	}
 
@@ -145,6 +190,7 @@ impl<D> Simulation<D> {
 	pub fn run_interactive(&mut self) {
 		self.begin();
 		self.print_round_status();
+
 		while !self.round.is_finished() {
 			let _ = stdout().flush();
 			stdin().read_line(&mut String::new());
@@ -153,9 +199,9 @@ impl<D> Simulation<D> {
 		}
 	}
 
-	/// Gets the resulting data from a round that has been run, supplemented by
-	/// a [`Stake`] and an ID.
-	pub fn get_round_data(&self, stake: Stake, id: u64) -> RoundData {
-		RoundData::with_round_and_id(&self.round, stake, id)
+	/// Consumes this simulation, returning the data from the round that has
+	/// been run, supplemented by a [`Stake`] and an ID.
+	pub fn to_round_data(self, stake: Stake, id: u64) -> SimulationData {
+		SimulationData::new(&self.round, self.strategy_history, stake, id)
 	}
 }
