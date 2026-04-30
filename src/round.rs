@@ -23,6 +23,8 @@ use crate::cards::{
 	SortCardsBy,
 };
 
+pub const MAX_CARDS_SELECTABLE: usize = 5;
+
 /// An action in a Balatro round.
 ///
 /// The two included actions are effectively equivalent in the sense that they
@@ -75,7 +77,8 @@ impl Stake {
 /// (chance to play a set of cards).
 ///
 /// Certain restrictions are imposed. The [`Deck`] can only contain unique
-/// cards. Discards and hands can only select a maximum of 5 cards.
+/// cards. Discards and hands can only select a maximum of
+/// [`MAX_CARDS_SELECTABLE`], i.e. 5, cards.
 ///
 /// The simulation includes every information a Balatro player has access
 /// to: cards currently held in hand, discarded cards, and remaining cards in
@@ -196,7 +199,7 @@ impl Round {
 	/// and all of them are from the hand/currently held.
 	fn action_sanity_check(&self, cards: &Hand) {
 		assert!(
-			!cards.is_empty() && cards.len() <= 5,
+			!cards.is_empty() && cards.len() <= MAX_CARDS_SELECTABLE,
 			"an action can only be done with between 1 to 5 cards selected. \
 			 received {cards:?}"
 		);

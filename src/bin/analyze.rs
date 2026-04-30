@@ -91,12 +91,12 @@ fn get_flushes_played(round: &RoundData) -> usize {
 /// the round.
 fn get_throws_used(round: &RoundData) -> usize {
 	// 🤜
-	let throw_hands = round
+	let throws = round
 		.plays
 		.iter()
 		.filter(|hand| !hand.contains_flush())
 		.count();
-	throw_hands + round.discards_used()
+	throws + round.discards_used()
 }
 
 /// Returns when the first flush was acquired in the hand.

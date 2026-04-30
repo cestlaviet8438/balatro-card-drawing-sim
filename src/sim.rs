@@ -27,7 +27,7 @@ use crate::{
 };
 
 /// The data relevant to a round, after having been run.
-#[derive(Debug, Clone, Serialize, Deserialize, new)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoundData {
 	/// ID for the round.
 	/// The ID is a character representing the stake, followed by a string of
@@ -63,16 +63,16 @@ impl RoundData {
 			Stake::White => "W",
 			Stake::Gold => "G",
 		};
-		Self::new(
-			format!("{id_prefix}{id}"),
-			round.held_capacity,
-			round.discards_given,
-			round.discards_remaining,
-			round.plays_given,
-			round.plays_remaining,
-			round.plays.clone(),
-			round.history.clone(),
-		)
+		Self {
+			id: format!("{id_prefix}{id}"),
+			held_capacity: round.held_capacity,
+			discards_given: round.discards_given,
+			discards_remaining: round.discards_remaining,
+			plays_given: round.plays_given,
+			plays_remaining: round.plays_remaining,
+			plays: round.plays.clone(),
+			history: round.history.clone(),
+		}
 	}
 
 	/// Returns the number of discards used.
@@ -83,7 +83,7 @@ impl RoundData {
 
 /// A simulation of drawing, discarding (and optionally playing) cards in
 /// Balatro.
-pub struct Simulation {
+pub struct Simulation<D> {
 	/// Whether the simulation has started.
 	pub started: bool,
 
@@ -91,11 +91,14 @@ pub struct Simulation {
 	pub round: Round,
 
 	/// The drawing & discarding strategy this simulation is using.
-	strategy: Box<dyn Strategy>,
+	strategy: Box<dyn Strategy<StrategyData = D>>,
 }
 
-impl Simulation {
-	pub fn new<S: Strategy + 'static>(round: Round, strategy: S) -> Self {
+impl<D> Simulation<D> {
+	pub fn new<S: Strategy<StrategyData = D> + 'static>(
+		round: Round,
+		strategy: S,
+	) -> Self {
 		Self {
 			started: false,
 			round,

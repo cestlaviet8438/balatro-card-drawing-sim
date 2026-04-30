@@ -8,6 +8,12 @@ use std::{
 	hash::Hash,
 };
 
+use cached::proc_macro::cached;
+use malachite::{
+	Natural,
+	base::num::arithmetic::traits::Factorial,
+};
+
 use crate::{
 	cards::{
 		Card,
@@ -21,6 +27,27 @@ use crate::{
 };
 
 pub mod flush;
+
+/// Evalutes `n!`, i.e. n factorial.
+#[cached]
+pub fn factorial(n: u64) -> Natural {
+	Natural::factorial(n)
+}
+
+/// Evalutes `nCr(n, r)`, i.e. how many combinations of size `r` can be made
+/// from `n` distinct symbols.
+///
+/// This function is a translation of the formula `nCr = n! / r!(n-r)!`.
+#[cached]
+pub fn n_choose_r(n: u64, r: u64) -> Natural {
+	debug_assert!(r <= n);
+	match (n, r) {
+		(0, _) => 0u64.into(),
+		(_, 0) => 1u64.into(),
+		(n, r) if n == r => 1u64.into(),
+		_ => factorial(n) / (factorial(r) * factorial(n - r)),
+	}
+}
 
 /// A more complicated version of `filter`. Based on the predicate,
 /// returns two separate collections using the provided collection, in the order
@@ -72,6 +99,10 @@ where
 /// A strategy to simulate a player, making decisions on the cards in their
 /// hand.
 pub trait Strategy {
+	/// Data associated with the strategy, to be processed and included in
+	/// simulation data.
+	type StrategyData;
+
 	/// Returns which cards to discard.
 	fn get_hand_to_discard(&self, round: &Round) -> Hand;
 
@@ -94,7 +125,11 @@ pub trait Strategy {
 		round.act(self.get_next_action(round), self.get_next_hand(round));
 	}
 
+	/// Obtains the simulation-relevant data for this strategy.
+	fn get_strategy_data(&self, round: &Round) -> Self::StrategyData;
+
 	/// Gets the preferred method to sort cards by when formatting and printing.
+	/// This function is run for every turn in a round.
 	fn get_card_sort_strategy(&self) -> SortCardsBy;
 }
 

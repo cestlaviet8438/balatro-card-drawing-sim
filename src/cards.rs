@@ -261,6 +261,13 @@ impl SortCardsBy {
 
 /// A collection of cards.
 pub trait CardCollection: AsRef<[Card]> + AsMut<[Card]> {
+	/// Returns this collection's length as a [`u64`].
+	/// This **will panic** if the collection's length does not fit in an
+	/// [`u64`].
+	fn len_u64(&self) -> u64 {
+		self.as_ref().len().try_into().unwrap()
+	}
+
 	/// Returns the set of ranks this collection contains.
 	fn rank_set(&self) -> HashSet<Rank> {
 		self.as_ref().iter().map(|card| card.0).collect()
@@ -697,6 +704,22 @@ impl DerefMut for Deck {
 }
 
 impl CardCollection for Deck {}
+
+impl<C: Into<Card>> FromIterator<C> for Deck {
+	fn from_iter<T: IntoIterator<Item = C>>(iter: T) -> Self {
+		Self(iter.into_iter().map(|c| c.into()).collect())
+	}
+}
+
+impl<'a> FromIterator<&'a str> for Deck {
+	fn from_iter<T: IntoIterator<Item = &'a str>>(iter: T) -> Self {
+		Self(
+			iter.into_iter()
+				.map(|c| Card::from_str(c).unwrap())
+				.collect(),
+		)
+	}
+}
 
 impl Deck {
 	/// Creates a new deck of cards with the given cards, and the option to
