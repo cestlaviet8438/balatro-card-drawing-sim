@@ -112,7 +112,7 @@ fn get_actions_to_first_flush(round: &SimulationData) -> Option<usize> {
 		.map(|(index, _)| index)
 }
 
-/// Compiles the value of a metirc for every round into the frequencies for a
+/// Compiles the value of a metric for every round into the frequencies for a
 /// complete set of rounds played. The returned [`HashMap`] maps a certain value
 /// of the metric to how many rounds shared that value.
 fn metric_frequencies<F, M>(
@@ -142,13 +142,17 @@ fn stringify_keys<K: ToString, V>(map: HashMap<K, V>) -> HashMap<String, V> {
 		.collect()
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn create_analysis(
+	data_file_name: &str,
+	analysis_file_name: &str,
+) -> Result<(), Box<dyn Error>> {
 	let output_folder = PathBuf::from("./output");
-	let data_file_path = output_folder.join("data.json");
+	let data_file_path = output_folder.join(data_file_name);
 	let mut data_file = OpenOptions::new().read(true).open(&data_file_path)?;
 	let mut data_str = String::new();
 	data_file.read_to_string(&mut data_str)?;
-	let analysis_file_path = output_folder.join("analysis.json");
+
+	let analysis_file_path = output_folder.join(analysis_file_name);
 	let mut analysis_file = OpenOptions::new()
 		.write(true)
 		.truncate(true)
@@ -171,5 +175,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 	};
 	analysis_file.write_all(format!("{analysis:#}").as_bytes())?;
 
+	Ok(())
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+	create_analysis("white_stake_data.json", "white_stake_analysis.json")?;
+	create_analysis("gold_stake_data.json", "gold_stake_analysis.json")?;
 	Ok(())
 }

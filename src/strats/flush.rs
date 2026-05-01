@@ -5,10 +5,12 @@ use std::collections::{
 	HashSet,
 };
 
+use cached::proc_macro::cached;
 use enum_iterator::all;
 use malachite::{
 	Natural,
 	Rational,
+	base::num::arithmetic::traits::Factorial,
 };
 use serde::{
 	Deserialize,
@@ -35,12 +37,35 @@ use crate::{
 		StrategyData,
 		get_most_frequent_entries,
 		hits_and_misses,
-		n_choose_r,
 	},
 };
 
 fn set_to_vec<T>(set: HashSet<T>) -> Vec<T> {
 	set.into_iter().collect()
+}
+
+/// Evalutes `n!`, i.e. n factorial.
+#[cached]
+pub fn factorial(n: u64) -> Natural {
+	Natural::factorial(n)
+}
+
+/// Evalutes `nCr(n, r)`, i.e. how many combinations of size `r` can be made
+/// from `n` distinct symbols.
+///
+/// This function is a translation of the formula `nCr = n! / r!(n-r)!`.
+#[cached]
+pub fn n_choose_k(n: u64, r: u64) -> Natural {
+	debug_assert!(
+		r <= n,
+		"cannot choose more than available: {r} was not <= {n}"
+	);
+	match (n, r) {
+		(0, _) => 0u64.into(),
+		(_, 0) => 1u64.into(),
+		(n, r) if n == r => 1u64.into(),
+		_ => factorial(n) / (factorial(r) * factorial(n - r)),
+	}
 }
 
 const SIZE_OF_FLUSH: usize = 5; // no magic numbers allowed in this house
@@ -132,7 +157,7 @@ impl FavorFlushes {
 			 was not < {draw_count}"
 		);
 		debug_assert!(
-			draw_count as usize <= MAX_CARDS_SELECTABLE,
+			draw_count <= MAX_CARDS_SELECTABLE,
 			"cannot draw more than {MAX_CARDS_SELECTABLE} at a time"
 		);
 		debug_assert!(!deck.is_empty(), "cannot draw from an empty deck");
@@ -165,11 +190,11 @@ impl FavorFlushes {
 
 		// draw set will be composed of `s` cards with the target suit and `d -
 		// s` cards with other suits.
-		let suited_combs = n_choose_r(
+		let suited_combs = n_choose_k(
 			deck_target_suit_count.try_into().unwrap(),
 			s.try_into().unwrap(),
 		);
-		let unsuited_combs = n_choose_r(
+		let unsuited_combs = n_choose_k(
 			deck_non_target_suit_count.try_into().unwrap(),
 			(d - s).try_into().unwrap(),
 		);
@@ -223,7 +248,7 @@ impl FavorFlushes {
 				target_suit,
 				deck,
 			),
-			n_choose_r(deck.len_u64(), d.try_into().unwrap()),
+			n_choose_k(deck.len_u64(), d.try_into().unwrap()),
 		)
 	}
 
@@ -253,7 +278,7 @@ impl FavorFlushes {
 				target_suit,
 				deck,
 			),
-			n_choose_r(deck.len_u64(), draw_count.try_into().unwrap()),
+			n_choose_k(deck.len_u64(), draw_count.try_into().unwrap()),
 		)
 	}
 
@@ -288,8 +313,8 @@ impl FavorFlushes {
 		let suited_cards_to_draw = SIZE_OF_FLUSH - held_target_suit_count;
 
 		Some(Self::_probability_to_draw_at_least_n_suited(
-			cards_to_draw.try_into().unwrap(),
-			suited_cards_to_draw.try_into().unwrap(),
+			cards_to_draw,
+			suited_cards_to_draw,
 			target_suit,
 			deck,
 		))
@@ -393,8 +418,8 @@ mod test {
 			flush::{
 				FavorFlushes,
 				get_most_frequent_entries,
+				n_choose_k,
 			},
-			n_choose_r,
 		},
 	};
 
@@ -436,7 +461,7 @@ mod test {
 				Suit::Heart,
 				&round.deck
 			),
-			n_choose_r(9, 1) * n_choose_r(35, 3),
+			n_choose_k(9, 1) * n_choose_k(35, 3),
 			"combnations for drawing 4 cards with exactly 1 heart card"
 		);
 		assert_eq!(
@@ -447,8 +472,8 @@ mod test {
 				&round.deck
 			),
 			Rational::from_naturals(
-				n_choose_r(9, 1) * n_choose_r(35, 3),
-				n_choose_r(44, 4)
+				n_choose_k(9, 1) * n_choose_k(35, 3),
+				n_choose_k(44, 4)
 			),
 			"probabilty to draw 4 cards with exactly 1 heart card"
 		);
@@ -461,8 +486,8 @@ mod test {
 				&round.deck
 			),
 			Rational::from_naturals(
-				n_choose_r(9, 2) * n_choose_r(35, 2),
-				n_choose_r(44, 4)
+				n_choose_k(9, 2) * n_choose_k(35, 2),
+				n_choose_k(44, 4)
 			),
 			"probabilty to draw 4 cards with exactly 1 heart card"
 		);
@@ -476,9 +501,9 @@ mod test {
 			),
 			Rational::from_naturals(
 				(1..=4)
-					.map(|s| n_choose_r(9, s) * n_choose_r(35, 4 - s))
+					.map(|s| n_choose_k(9, s) * n_choose_k(35, 4 - s))
 					.sum(),
-				n_choose_r(44, 4)
+				n_choose_k(44, 4)
 			),
 			"probabilty to draw 4 cards with exactly 1 heart card"
 		);
@@ -487,9 +512,9 @@ mod test {
 			strategy.probability_to_complete_flush(&round),
 			Some(Rational::from_naturals(
 				(1..=4)
-					.map(|s| n_choose_r(9, s) * n_choose_r(35, 4 - s))
+					.map(|s| n_choose_k(9, s) * n_choose_k(35, 4 - s))
 					.sum(),
-				n_choose_r(44, 4)
+				n_choose_k(44, 4)
 			)),
 			"probabilty to draw 4 cards with exactly 1 heart card"
 		);

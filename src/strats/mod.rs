@@ -37,30 +37,6 @@ use crate::{
 
 pub mod flush;
 
-/// Evalutes `n!`, i.e. n factorial.
-#[cached]
-pub fn factorial(n: u64) -> Natural {
-	Natural::factorial(n)
-}
-
-/// Evalutes `nCr(n, r)`, i.e. how many combinations of size `r` can be made
-/// from `n` distinct symbols.
-///
-/// This function is a translation of the formula `nCr = n! / r!(n-r)!`.
-#[cached]
-pub fn n_choose_r(n: u64, r: u64) -> Natural {
-	debug_assert!(
-		r <= n,
-		"cannot choose more than available: {r} was not <= {n}"
-	);
-	match (n, r) {
-		(0, _) => 0u64.into(),
-		(_, 0) => 1u64.into(),
-		(n, r) if n == r => 1u64.into(),
-		_ => factorial(n) / (factorial(r) * factorial(n - r)),
-	}
-}
-
 /// A more complicated version of `filter`. Based on the predicate,
 /// returns two separate collections using the provided collection, in the order
 /// of the returned tuple: one the predicate returns `true` for, and one the
