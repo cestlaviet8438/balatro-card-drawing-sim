@@ -87,8 +87,7 @@ fn get_flushes_played(round: &SimulationData) -> usize {
 		.count()
 }
 
-/// Returns the number of discards and throwaway hands ("throws") used during
-/// the round.
+/// Returns the number of throwaway hands ("throws") used during the round.
 fn get_throws_used(round: &SimulationData) -> usize {
 	// 🤜
 	let throws = round
