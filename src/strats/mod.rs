@@ -61,8 +61,8 @@ where
 }
 
 /// Utility to get the keys if their value is the maximum value in a certain
-/// [`HashMap`]. This function returns the maximum value in a set of
-/// values, and a list of keys that correspond to that maximum value.
+/// [`HashMap`]. This function returns a set of keys that correspond to that
+/// maximum value and said maximum value.
 pub fn get_most_frequent_entries<K, V>(map: &HashMap<K, V>) -> (HashSet<K>, V)
 where
 	K: Eq + Hash + Clone,

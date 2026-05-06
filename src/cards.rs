@@ -187,7 +187,18 @@ impl Suit {
 /// A playing card in Balatro/Poker, in general.
 ///
 /// For this simulation, enhancements and editions are not included.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+	Debug,
+	Clone,
+	Copy,
+	PartialEq,
+	Eq,
+	PartialOrd,
+	Ord,
+	Hash,
+	Serialize,
+	Deserialize,
+)]
 pub struct Card(pub Rank, pub Suit);
 
 impl Display for Card {

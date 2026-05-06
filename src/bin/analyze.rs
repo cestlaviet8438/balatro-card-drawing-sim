@@ -11,7 +11,11 @@ use std::{
 	path::PathBuf,
 };
 
-use balatro_card_drawing_sim::sim::SimulationData;
+use balatro_card_drawing_sim::{
+	cards::CardCollection,
+	sim::SimulationData,
+	strats::get_most_frequent_entries,
+};
 use json::{
 	JsonValue,
 	array,
@@ -75,6 +79,12 @@ impl Part {
 	pub fn fractional(&self) -> f64 {
 		(self.part as f64) / (self.whole as f64)
 	}
+}
+
+/// Returns the maximum suit frequency (MSF) of the initial draw.
+fn get_first_msf(round: &SimulationData) -> usize {
+	get_most_frequent_entries(&round.action_history[0].held.suit_frequencies())
+		.1
 }
 
 /// Returns the number of flushes played during the round.
@@ -159,6 +169,7 @@ fn create_analysis(
 		.open(analysis_file_path)?;
 
 	let rounds: Vec<SimulationData> = serde_json::from_str(&data_str)?;
+	let first_msf = metric_frequencies(&rounds, get_first_msf);
 	let flushes_played = metric_frequencies(&rounds, get_flushes_played);
 	let throws_used = metric_frequencies(&rounds, get_throws_used);
 	let actions_to_first_flush: HashMap<_, _> =
@@ -168,6 +179,7 @@ fn create_analysis(
 			.collect();
 
 	let analysis = object! {
+		first_msf: stringify_keys(first_msf),
 		flushes_played: stringify_keys(flushes_played),
 		throws_used: stringify_keys(throws_used),
 		actions_to_first_flush: stringify_keys(actions_to_first_flush),

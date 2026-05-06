@@ -31,6 +31,7 @@ name = "balatro-card-drawing-sim"
 version = "0.1.0"
 dependencies = [
  "cached",
+ "combinatorial",
  "derive-new",
  "enum-iterator",
  "json",
@@ -109,6 +110,12 @@ dependencies = [
  "cpufeatures",
  "rand_core",
 ]
+
+[[package]]
+name = "combinatorial"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c330359733ca1cce2a4f55698d79356525840b5897b73af16e94b9967cae756"
 
 [[package]]
 name = "cpufeatures"
